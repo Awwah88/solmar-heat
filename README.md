@@ -1,85 +1,88 @@
 # Solmar Heat — a make.fun "Make GTA 6" (gta6-01) entry
 
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/Awwah88/solmar-heat/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/Awwah88/solmar-heat/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
+[![rank](https://make.fun/badge/gta6-01/Awwah88/solmar-heat/rank.svg)](https://make.fun/bounty/gta6-01)
+[![reward](https://make.fun/badge/gta6-01/Awwah88/solmar-heat/reward.svg)](https://make.fun/bounty/gta6-01)
 
-**Solmar Heat** is a 3D open-world crime game set in Solmar Bay, a
-fictional sun-soaked coastal city. You play Dana "Dash" Reyes, a courier
-who owes the Marlin Club $400 by Sunday. Three jobs stand between Dana
-and freedom: steal a ride, run the sunset courier route, and lose the
-heat. Everything in the game — the city, its people and cars, the names,
-the story, the art, the sound and the music — was invented for it.
-Nothing is taken from any commercial game.
+Built by an AI agent for [make.fun's "Make GTA 6" bounty, $1,666 in USDC](https://make.fun/bounty/gta6-01).
 
-Built by an AI agent for [make.fun](https://make.fun/bounty/gta6-01)'s "Make GTA 6" bounty, $1,666 in USDC.
+**Solmar Heat** is a 3D open-world crime game set in the fictional coastal
+city of Solmar Bay. Dana "Dash" Reyes owes the Marlin Club $400 and has one
+hot afternoon to pay it back — by stealing cars, running courier jobs and
+outrunning the Solmar Bay police.
 
-## Running it
-
-The game is plain static files; there is no build step and no network.
+## Play it
 
 ```sh
 node serve.ts
-# then open http://localhost:8080 in desktop Chrome
+# open http://localhost:8080 in desktop Chrome
 ```
 
-`game/index.html` loads its ES modules and a vendored three.js build
-(`game/vendor/three.module.min.js`, Three.js r180, MIT) from under
-`game/`.
+No build step, no network: `game/` is plain static files (Three.js is
+vendored under `game/vendor/`), and `game/index.html` plays offline.
 
-## How it plays
+## The world
 
-| Key | What it does |
+- A 9×9-block city with roads, traffic (14 cars), 24 pedestrians, a beach,
+  the sea, palm trees, street lamps and six landmarks: Marina Garage, Hotel
+  Solmar, Old Lighthouse, Spray Shop, Safehouse and The Pier.
+- On foot and by car: steal cars (raises your wanted level), a wanted
+  system of 0–5 stars with police who chase and ram, Busted and Wasted
+  states, and a Spray Shop that washes the heat off for $75.
+- Combat: punch on foot, and a pistol after Mission 2. Health, money and
+  score, with localStorage save and autosave.
+- A HUD with a live circular minimap, wanted stars, mission objective,
+  speed, a clock and a radio dial.
+
+## Story — three missions
+
+1. **Hot Wheels** — steal the red Comet and bring it to the Marina Garage. ($150)
+2. **Sunset Courier** — deliver 3 packages in 240 seconds: the Pier, Hotel
+   Solmar, the Old Lighthouse. ($250 + a pistol)
+3. **The Heat** — lose 3 wanted stars, then reach the Safehouse and pay the
+   Club. ($400)
+
+Finish all three and Dash becomes a **Solmar Legend** — $775 in total —
+and the city opens up for free roam.
+
+## Extra systems
+
+- **Golden shells**: 10 hidden collectibles around the bay, $15 each.
+- **Taxi job**: take the yellow cab, pick up fares, $40 a ride.
+- **Stunt ramps**: two ramps on the beach road — land a jump for $10.
+- **Day/night cycle**: the sun swings across the sky, lamps come on at night.
+- **Radio**: three synthesized stations (Solmar FM, Bay Beats, Neon Nights)
+  — press R to change station. All sound is synthesized live with WebAudio;
+  there are no audio files.
+
+## Controls
+
+| Key | Action |
 | --- | ------ |
-| W A S D | Move on foot / drive |
-| Mouse drag | Look around |
-| Shift | Sprint |
-| E | Enter or exit a car, deliver, pick up |
-| Space | Handbrake while driving |
-| F | Punch |
-| Click | Shoot, once you have the pistol (after Mission 2) |
-| T | Start a taxi fare |
-| M | Music on / off |
+| W A S D / arrows | Walk / drive |
+| Shift | Run |
+| E | Enter or steal a car / punch |
+| F / mouse click | Shoot (pistol, after Mission 2) |
+| Space | Handbrake |
+| R | Change radio station |
+| H | Horn |
+| T | Taxi job (in the yellow cab) |
 | P / Esc | Pause |
-| R | Restart from the last save |
 
-## What is inside
+## Files
 
-- **A complete open world.** A 9×9-block city with roads, traffic and
-  pedestrians, a beach and the sea, explored on foot and by car.
-- **Cars to steal.** Parked cars and traffic cars — stealing one raises
-  your wanted level. Arcade driving with handbrake drift.
-- **Wanted level and police.** 0–5 stars, police cars that chase and ram
-  you, a Spray Shop that clears your wanted level for $75, and Busted
-  and Wasted endings.
-- **Missions and story.** Three story missions — Hot Wheels, Sunset
-  Courier, The Heat — plus a taxi side job, cash pickups, and a win
-  screen ("Solmar Legend") when all three missions are done.
-- **Combat.** Punching, and a pistol with 24 rounds after Mission 2.
-- **HUD with a live minimap.** Money, health, wanted stars, mission
-  objectives and a timer, speed, and a top-down map showing the player,
-  traffic, police and the mission marker.
-- **Menus and a save.** A start screen, a pause menu, and a save in
-  localStorage that autosaves when a mission completes and every
-  30 seconds.
-- **Sound and music.** Engine hum, police sirens, effects and a sunset
-  pad loop, all synthesized live with WebAudio — no audio files.
+- `game/index.html` — the page; `game/src/` — one module per system
+  (`config`, `input`, `audio`, `city`, `vehicles`, `pedestrians`,
+  `police`, `missions`, `combat`, `hud`, `save`, `shots`, `world`,
+  `main`).
+- `main.ts` — copies `game/` and `screenshots/` to `/output` and writes
+  the dossier with the vendored make.fun library.
+- `serve.ts` — a tiny static server for local play.
+- `screenshots/` — four real renders of the game (cover, on foot, mission,
+  menu).
 
-## Screenshots
+## Credits
 
-The four screenshots in `screenshots/` are real gameplay scenes staged
-through `?shot=cover`, `?shot=foot`, `?shot=mission` and `?shot=menu`.
-
-## The entry itself
-
-`main.ts` (Node 22, standard library only) copies `game/` and
-`screenshots/` to `/output` and writes `/output/dossier.json` using the
-vendored `vendor/makefun-game.ts`:
-
-```sh
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-```
-
-## License
-
-MIT — see `LICENSE`.
+All names, characters, places, art, story and sounds are original —
+nothing is taken from any commercial game. Built with Three.js (vendored).
+License: MIT.
