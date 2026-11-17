@@ -1,110 +1,69 @@
-// Solmar Heat — shots.js
-// Screenshot staging: ?shot=cover|foot|mission|menu (with an optional
-// &seed=) puts the live game into a scene that shows off a different
-// system in each shot. These are real renders of the running game —
-// the staging only moves the player and the state, it never fakes a pixel.
+// Solmar Heat — staged scenes for screenshots.
+// ?shot=cover|foot|mission|menu (with &seed=1) drops the running game into
+// a real gameplay state for the shot: no fake renders, the same world the
+// player drives in, posed so each system reads at a glance. In shot mode
+// the police cannot hurt the player and the mission clock is frozen, so a
+// slow headless render still catches the scene intact.
 
-import { CONFIG, LANDMARKS } from './config.js';
-
-export function applyShot(world, params) {
+export function readShotParams() {
+  const params = new URLSearchParams(window.location.search);
   const shot = params.get('shot');
-  if (!shot) return;
-  const seed = Number(params.get('seed') || 1);
-  // Deterministic-ish placement per seed, so retakes look the same.
-  const jitter = (seed % 5) * 2;
-
-  if (shot === 'menu') {
-    world.state = 'menu';
-    world.hud.showMenu('title');
-    return;
-  }
-
-  // Every other shot is live gameplay with the HUD on.
-  world.hud.hideMenu();
-  world.state = 'playing';
-  world.audio.ensure();
-
-  if (shot === 'foot') {
-    // Mission 1, on foot on a city street, traffic rolling past.
-    world.missions.index = 0;
-    world.missions.done = [false, false, false];
-    world.missions.refreshObjective();
-    world.money = 0;
-    world.police.setWanted(0);
-    world.player.pos.x = 80;
-    world.player.pos.z = -100 + jitter;
-    world.player.heading = 0;
-    world.player.mesh.position.set(80, 0, -100 + jitter);
-    world.player.mesh.rotation.y = 0;
-    world.cameraYaw = Math.PI;
-    world.snapCamera();
-    return;
-  }
-
-  if (shot === 'mission') {
-    // Mission 2 courier run: in the red car, racing for the Pier with
-    // the timer on and a package marker ahead.
-    world.missions.index = 1;
-    world.missions.done = [true, false, false];
-    world.missions.packageIndex = 0;
-    world.missions.timer = 187;
-    world.missions.refreshObjective();
-    world.money = 150;
-    world.combat.givePistol();
-    world._resetPlayerToStart();
-    const car = world.redCar;
-    world.enterCar(car);
-    // Set the wanted level AFTER entering the car: stealing adds a star.
-    world.police.setWanted(1);
-    car.pos.x = 80;
-    car.pos.z = 40 + jitter;
-    car.setHeading(0);
-    car.speed = 18;
-    world.player.pos.x = car.pos.x;
-    world.player.pos.z = car.pos.z;
-    world.cameraYaw = Math.PI;
-    world.snapCamera();
-    return;
-  }
-
-  if (shot === 'cover') {
-    // The money shot: a three-star police chase down a palm-lined road,
-    // in the red Comet, mission 2 live, beacons ahead.
-    world.missions.index = 1;
-    world.missions.done = [true, false, false];
-    world.missions.packageIndex = 1;
-    world.missions.timer = 142;
-    world.missions.refreshObjective();
-    world.money = 175;
-    world.combat.givePistol();
-    world._resetPlayerToStart();
-    const car = world.redCar;
-    world.enterCar(car);
-    // Set the wanted level AFTER entering the car: stealing adds a star.
-    world.police.setWanted(3);
-    car.pos.x = 80;
-    car.pos.z = 60 + jitter;
-    car.setHeading(0);
-    car.speed = 24;
-    world.player.pos.x = car.pos.x;
-    world.player.pos.z = car.pos.z;
-    // Pull the police in close for the chase.
-    world.police.update(0.1, world.player.pos, car, 24, false);
-    world.cameraYaw = Math.PI;
-    world.snapCamera();
-    return;
-  }
-
-  // Unknown ?shot= value: leave the game on the title screen.
-  world.state = 'menu';
-  world.hud.showMenu('title');
+  const seed = Number(params.get('seed') || 0) || 0;
+  return { shot, seed };
 }
 
-export function shotList() {
-  return [
-    { name: '1-cover.jpg', query: '?shot=cover&seed=1' },
-    { name: '2-foot.jpg', query: '?shot=foot&seed=1' },
-    { name: '3-mission.jpg', query: '?shot=mission&seed=1' },
-    { name: '4-menu.jpg', query: '?shot=menu&seed=1' },
-  ];
+export function applyShot(game, shot) {
+  if (!shot) return false;
+  game.shotMode = shot;
+  const g = game;
+  if (shot === 'menu') {
+    g.state = 'menu';
+    g.hud.showScreen('menu');
+    return true;
+  }
+  // Every other shot starts the story for real, then poses it.
+  g.startStory(true);
+  if (shot === 'cover') {
+    // A three-star chase mid-courier: in a car, wanted 3, police closing.
+    g.missions.index = 1;
+    g.missions.done = [false, false, false];
+    g.missions.packageIndex = 1;
+    g.missions.timer = 180;
+    g.money = 450;
+    g.enterCar(g.redCar);
+    g.redCar.pos.set(80, 0, 40);
+    g.redCar.setHeading(Math.PI);
+    g.redCar.speed = 12;
+    g.player.pos.set(80, 0, 40);
+    g.player.heading = Math.PI;
+    g.police.setWanted(3);
+    g.missions.refreshObjective();
+  } else if (shot === 'foot') {
+    // On foot at a city intersection, first mission, no heat.
+    g.missions.index = 0;
+    g.missions.done = [false, false, false];
+    g.player.pos.set(40, 0, -40);
+    g.player.heading = Math.PI / 4;
+    g.police.setWanted(0);
+    g.missions.refreshObjective();
+  } else if (shot === 'mission') {
+    // Courier run to the Pier, two stars, police in pursuit.
+    g.missions.index = 1;
+    g.missions.done = [false, false, false];
+    g.missions.packageIndex = 0;
+    g.missions.timer = 210;
+    g.money = 200;
+    g.enterCar(g.redCar);
+    g.redCar.pos.set(60, 0, 168);
+    g.redCar.setHeading(0);
+    g.redCar.speed = 14;
+    g.player.pos.set(60, 0, 168);
+    g.player.heading = 0;
+    g.police.setWanted(2);
+    g.missions.refreshObjective();
+  } else {
+    return false;
+  }
+  g.hud.refresh();
+  return true;
 }

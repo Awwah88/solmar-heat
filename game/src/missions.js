@@ -1,190 +1,228 @@
-// Solmar Heat — missions.js
-// The story: three missions, a taxi side job, and the win. Each mission
-// has a marker on the road, an objective line for the HUD, and a reward.
-// The module never touches the renderer — it just watches positions,
-// timers and the wanted level, and tells the world when something is done.
+// Solmar Heat — the story missions and the taxi side job.
+// Three missions, in order: steal a car for the Marina Garage, run three
+// courier packages against a 240-second clock, then lose a three-star
+// wanted level and reach the Safehouse. A taxi job pays $40 a fare for
+// anyone driving the cab. Markers are glowing rings with a beam of light,
+// so the player always knows where to go.
 
-import { CONFIG, LANDMARKS, MISSIONS, distance2D } from './config.js';
+import * as THREE from 'three';
+import { ECONOMY, MISSIONS, TUNING, dist2d, clamp, mulberry32 } from './config.js';
 
-export class Missions {
+function makeMarker(color) {
+  const group = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(4.4, 5.6, 32),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.12;
+  group.add(ring);
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.1, 1.6, 42, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  beam.position.y = 21;
+  group.add(beam);
+  const pin = new THREE.Mesh(
+    new THREE.ConeGeometry(1.6, 4, 10),
+    new THREE.MeshBasicMaterial({ color }),
+  );
+  pin.rotation.x = Math.PI;
+  pin.position.y = 9;
+  group.add(pin);
+  return group;
+}
+
+export class MissionSystem {
   constructor(game) {
     this.game = game;
-    this.index = 0; // 0..2 while the story runs, 3 when it is won
-    this.done = [false, false, false];
-    this.timer = 0;
-    this.packageIndex = 0;
-    this.objective = MISSIONS[0].objective;
-    this.current = MISSIONS[0];
-    this.marker = { ...LANDMARKS.garage.marker };
-    this.markerColor = 0xe8c832;
-    this.taxi = { active: false, stage: 0, pickup: null, dropoff: null, fare: 0 };
-    this._courierDrops = [
-      { ...LANDMARKS.pier.marker, name: 'The Pier' },
-      { ...LANDMARKS.hotel.marker, name: 'Hotel Solmar' },
-      { ...LANDMARKS.lighthouse.marker, name: 'Old Lighthouse' },
-    ];
-  }
-
-  get active() {
-    return this.index < 3;
-  }
-
-  refreshObjective() {
-    if (this.index >= 3) {
-      this.objective = 'Solmar Legend — free roam. Enjoy the city, Dash.';
-      this.current = null;
-      this.marker = null;
-      return;
-    }
-    this.current = MISSIONS[this.index];
-    this.objective = this.current.objective;
-    if (this.index === 0) {
-      this.marker = { ...LANDMARKS.garage.marker };
-    } else if (this.index === 1) {
-      const drop = this._courierDrops[this.packageIndex];
-      this.marker = drop ? { x: drop.x, z: drop.z } : null;
-    } else if (this.index === 2) {
-      this.marker = { ...LANDMARKS.safehouse.marker };
-    }
-  }
-
-  start() {
     this.index = 0;
     this.done = [false, false, false];
     this.packageIndex = 0;
-    this.timer = 0;
+    this.timer = TUNING.mission2Seconds;
+    this.taxiJobs = 0;
+    this.taxiState = 'idle';
+    this.taxiTarget = null;
+    this.taxiPassengerAt = null;
+    this.marker = null;
+    this.taxiMarker = null;
+    this.rng = game.seed ? mulberry32(game.seed + 21) : Math.random;
+  }
+
+  get current() {
+    return MISSIONS[this.index] || null;
+  }
+
+  get active() {
+    return this.index < 3 && !this.done[this.index];
+  }
+
+  build() {
+    this.marker = makeMarker(0xffd23f);
+    this.marker.visible = false;
+    this.game.scene.add(this.marker);
+    this.taxiMarker = makeMarker(0xf7c948);
+    this.taxiMarker.visible = false;
+    this.game.scene.add(this.taxiMarker);
     this.refreshObjective();
+    return this;
   }
 
-  startMission2() {
-    this.index = 1;
-    this.packageIndex = 0;
-    this.timer = CONFIG.MISSION2_TIME_LIMIT;
-    this.refreshObjective();
-  }
-
-  startMission3() {
-    this.index = 2;
-    this.game.police.setWanted(CONFIG.MISSION3_WANTED);
-    this.refreshObjective();
-  }
-
-  completeMission(i) {
-    if (this.done[i]) return;
-    this.done[i] = true;
-    const reward = MISSIONS[i].reward;
-    this.game.money += reward;
-    this.game.score += reward;
-    this.game.audio.missionDone();
-    this.game.save.write(this.game);
-    if (i === 0) {
-      this.game.hud.toast(`Mission complete: ${MISSIONS[0].title} — +$${reward}`);
-      this.startMission2();
-    } else if (i === 1) {
-      this.game.combat.givePistol();
-      this.game.hud.toast(`Mission complete: ${MISSIONS[1].title} — +$${reward} and a pistol`);
-      this.startMission3();
-    } else if (i === 2) {
-      this.game.hud.toast(`Mission complete: ${MISSIONS[2].title} — +$${reward}`);
-      this.index = 3;
-      this.refreshObjective();
-      this.game.win();
-    }
-  }
-
-  // Called every frame while the story runs.
-  update(dt, playerPos, inCar) {
-    if (this.index >= 3) {
-      this._updateTaxi(dt, playerPos, inCar);
+  refreshObjective() {
+    const g = this.game;
+    if (this.index >= 3 || this.done[2]) {
+      this.marker.visible = false;
+      g.hud.setObjective('Free roam', 'Solmar Bay is yours. Earn cash, dodge the law.');
       return;
     }
+    const m = this.current;
+    if (!m) return;
     if (this.index === 1) {
+      const pkg = m.packages[this.packageIndex];
+      if (pkg) {
+        this.marker.position.set(pkg.at[0], 0, pkg.at[1]);
+        this.marker.visible = true;
+        g.hud.setObjective(m.title, `Deliver package ${this.packageIndex + 1} of 3 — ${pkg.name} (${Math.ceil(this.timer)}s)`);
+      }
+      return;
+    }
+    this.marker.position.set(m.marker[0], 0, m.marker[1]);
+    this.marker.visible = true;
+    g.hud.setObjective(m.title, m.objective);
+  }
+
+  completeMission() {
+    const g = this.game;
+    const m = this.current;
+    if (!m) return;
+    this.done[this.index] = true;
+    g.money += m.reward;
+    g.audio.missionDone();
+    g.hud.toast(`${m.title} complete — +$${m.reward}`);
+    g.save.save();
+    if (this.index === 1) {
+      g.combat.hasPistol = true;
+      g.police.setWanted(3);
+      g.hud.toast('The Marlin Club gave you a pistol. And the heat is on.');
+    }
+    this.index++;
+    if (this.index === 1) {
+      this.packageIndex = 0;
+      this.timer = TUNING.mission2Seconds;
+    }
+    if (this.index >= 3) {
+      g.win();
+      return;
+    }
+    this.refreshObjective();
+    g.hud.refresh();
+  }
+
+  failMission2() {
+    const g = this.game;
+    this.packageIndex = 0;
+    this.timer = TUNING.mission2Seconds;
+    g.audio.missionFail();
+    g.hud.toast('Out of time — the packages go back. Try the run again.');
+    this.refreshObjective();
+  }
+
+  _checkMissions() {
+    const g = this.game;
+    const p = g.player.pos;
+    if (this.index === 0 && !this.done[0]) {
+      if (g.player.car && dist2d(p.x, p.z, 140, -118) < TUNING.markerRadius) this.completeMission();
+      return;
+    }
+    if (this.index === 1 && !this.done[1]) {
+      const m = this.current;
+      const pkg = m.packages[this.packageIndex];
+      if (pkg && dist2d(p.x, p.z, pkg.at[0], pkg.at[1]) < TUNING.packageRadius) {
+        this.packageIndex++;
+        g.audio.pickup();
+        if (this.packageIndex >= 3) {
+          this.completeMission();
+        } else {
+          g.hud.toast(`Package ${this.packageIndex} of 3 delivered.`);
+          this.refreshObjective();
+        }
+      }
+      return;
+    }
+    if (this.index === 2 && !this.done[2]) {
+      if (g.police.wanted === 0 && dist2d(p.x, p.z, -140, 120) < TUNING.markerRadius) {
+        this.completeMission();
+      }
+    }
+  }
+
+  _checkTaxi(dt) {
+    const g = this.game;
+    const inTaxi = g.player.car === g.vehicles.taxiCar;
+    if (!inTaxi) {
+      if (this.taxiState !== 'idle') {
+        this.taxiState = 'idle';
+        this.taxiMarker.visible = false;
+      }
+      return;
+    }
+    const p = g.player.pos;
+    if (this.taxiState === 'idle') {
+      // A passenger waves from a random roadside corner.
+      const spot = this._randomRoadside();
+      this.taxiPassengerAt = spot;
+      this.taxiTarget = null;
+      this.taxiState = 'waiting';
+      this.taxiMarker.position.set(spot.x, 0, spot.z);
+      this.taxiMarker.visible = true;
+      g.hud.toast('Taxi job: pick up the passenger at the yellow marker.');
+    } else if (this.taxiState === 'waiting') {
+      if (dist2d(p.x, p.z, this.taxiPassengerAt.x, this.taxiPassengerAt.z) < 9) {
+        this.taxiState = 'aboard';
+        this.taxiTarget = this._randomRoadside();
+        this.taxiMarker.position.set(this.taxiTarget.x, 0, this.taxiTarget.z);
+        g.hud.toast('Passenger aboard — take them to the yellow marker.');
+      }
+    } else if (this.taxiState === 'aboard') {
+      if (dist2d(p.x, p.z, this.taxiTarget.x, this.taxiTarget.z) < 9) {
+        this.taxiJobs++;
+        g.money += ECONOMY.taxiFare;
+        g.audio.cashRegister();
+        g.hud.toast(`Fare complete — +$${ECONOMY.taxiFare}`);
+        this.taxiState = 'idle';
+        this.taxiMarker.visible = false;
+        g.hud.refresh();
+      }
+    }
+  }
+
+  _randomRoadside() {
+    const rng = this.rng;
+    const line = -160 + Math.floor(rng() * 9) * 40;
+    const along = -140 + Math.floor(rng() * 8) * 40;
+    const off = rng() < 0.5 ? -8 : 8;
+    if (rng() < 0.5) return { x: line + off, z: along };
+    return { x: along, z: line + off };
+  }
+
+  update(dt) {
+    const g = this.game;
+    if (g.state !== 'playing') return;
+    if (this.index === 1 && !this.done[1] && !g.shotMode) {
       this.timer -= dt;
       if (this.timer <= 0) {
-        // Out of time: the courier job fails, but the story goes on —
-        // restart the mission with a fresh clock instead of a dead end.
-        this.timer = CONFIG.MISSION2_TIME_LIMIT;
-        this.packageIndex = 0;
-        this.refreshObjective();
-        this.game.hud.toast('Out of time! The courier run restarts.');
-        return;
+        this.timer = 0;
+        this.failMission2();
       }
+      // Refresh the countdown text a few times a second.
+      if (Math.floor(this.timer * 4) !== Math.floor((this.timer + dt) * 4)) this.refreshObjective();
     }
-    const marker = this.marker;
-    if (!marker) return;
-    const d = distance2D(playerPos.x, playerPos.z, marker.x, marker.z);
-    if (d > 7) return;
-
-    if (this.index === 0) {
-      // Hot Wheels: only counts in a car — Dash has to drive it in.
-      if (inCar) this.completeMission(0);
-      else this.game.hud.hint('Get in a car first — the garage wants the car, not you.');
-    } else if (this.index === 1) {
-      if (!inCar) {
-        this.game.hud.hint('Deliveries are by car — get back behind the wheel.');
-        return;
-      }
-      const drop = this._courierDrops[this.packageIndex];
-      this.packageIndex += 1;
-      this.game.audio.pickup();
-      this.game.hud.toast(`Package delivered: ${drop.name} (${this.packageIndex}/3)`);
-      if (this.packageIndex >= 3) {
-        this.completeMission(1);
-      } else {
-        this.refreshObjective();
-      }
-    } else if (this.index === 2) {
-      // The Heat: the Safehouse only counts once the stars are gone.
-      if (this.game.police.wanted > 0) {
-        this.game.hud.hint('Too hot! Lose the stars at the Spray Shop first.');
-        return;
-      }
-      this.completeMission(2);
+    // Pulse the marker ring.
+    if (this.marker && this.marker.visible) {
+      const s = 1 + Math.sin(g.elapsed * 3) * 0.08;
+      this.marker.scale.set(s, 1, s);
     }
-  }
-
-  // --- Taxi side job ----------------------------------------------------------
-  // Enter the yellow cab and a fare appears: pick the passenger up, drop
-  // them off, pocket $40. It runs in free roam and between story beats,
-  // never during a timed courier run.
-
-  startTaxi(playerPos) {
-    if (this.taxi.active || this.index === 1) return;
-    const spots = [
-      { ...LANDMARKS.hotel.marker, name: 'Hotel Solmar' },
-      { ...LANDMARKS.pier.marker, name: 'The Pier' },
-      { ...LANDMARKS.garage.marker, name: 'Marina Garage' },
-      { ...LANDMARKS.lighthouse.marker, name: 'Old Lighthouse' },
-    ];
-    const pickup = spots[Math.floor(Math.random() * spots.length)];
-    let dropoff = spots[Math.floor(Math.random() * spots.length)];
-    if (dropoff.name === pickup.name) dropoff = spots[(spots.indexOf(pickup) + 2) % spots.length];
-    this.taxi = { active: true, stage: 0, pickup, dropoff, fare: CONFIG.TAXI_FARE };
-    this.game.hud.toast(`Taxi fare: pick up at ${pickup.name}`);
-  }
-
-  _updateTaxi(dt, playerPos, inCar) {
-    if (!this.taxi.active) return;
-    if (!inCar) return;
-    const target = this.taxi.stage === 0 ? this.taxi.pickup : this.taxi.dropoff;
-    const d = distance2D(playerPos.x, playerPos.z, target.x, target.z);
-    if (d > 7) return;
-    if (this.taxi.stage === 0) {
-      this.taxi.stage = 1;
-      this.game.hud.toast(`Passenger aboard — drop them at ${this.taxi.dropoff.name}`);
-      this.game.audio.pickup();
-    } else {
-      this.taxi.active = false;
-      this.game.money += this.taxi.fare;
-      this.game.score += this.taxi.fare;
-      this.game.audio.missionDone();
-      this.game.hud.toast(`Fare complete — +$${this.taxi.fare}`);
-      this.game.save.write(this.game);
-    }
-  }
-
-  get taxiMarker() {
-    if (!this.taxi.active) return null;
-    return this.taxi.stage === 0 ? this.taxi.pickup : this.taxi.dropoff;
+    this._checkMissions();
+    this._checkTaxi(dt);
   }
 }

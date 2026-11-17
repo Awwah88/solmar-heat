@@ -1,238 +1,180 @@
-// Solmar Heat — config.js
-// Every tunable number, story beat and landmark for the game lives here,
-// so the other modules can stay small and single-purpose. All names,
-// places and story details are original inventions for this game.
+// Solmar Heat — shared tuning, layout and story constants.
+// Every number the game uses lives here, so a single file describes the
+// city, the economy and the three story missions.
 
-export const CONFIG = {
-  // World geometry. Roads run on lines that are multiples of ROAD_STEP;
-  // city blocks sit halfway between them so no building ever blocks a road.
-  ROAD_STEP: 40,
-  ROAD_HALF: 5,
-  CITY_MIN: -160,
-  CITY_MAX: 160,
-  BLOCK_SIZE: 28,
-  SEA_START: 184,
-  BEACH_END: 200,
-  SEA_END: 260,
-
-  // Player.
-  PLAYER_WALK_SPEED: 9,
-  PLAYER_RUN_SPEED: 14,
-  PLAYER_RADIUS: 0.9,
-  PLAYER_START: { x: 80, z: -140 },
-  START_HEALTH: 100,
-  START_MONEY: 0,
-
-  // Driving.
-  CAR_TOP_SPEED: 34,
-  CAR_ACCEL: 22,
-  CAR_BRAKE: 34,
-  CAR_REVERSE_SPEED: 12,
-  CAR_TURN: 1.9,
-  CAR_RADIUS: 1.9,
-
-  // Wanted / police.
-  MAX_WANTED: 5,
-  SPRAY_COST: 75,
-  STEAL_WANTED: 1,
-  PED_HIT_WANTED: 2,
-  SHOOT_WANTED: 1,
-
-  // Money.
-  MISSION_REWARDS: [150, 250, 400],
-  CASH_PICKUP_VALUE: 25,
-  SHELL_VALUE: 15,
-  TAXI_FARE: 40,
-  STUNT_BONUS: 10,
-  BUSTED_FINE: 50,
-
-  // Missions.
-  MISSION2_TIME_LIMIT: 240,
-  MISSION3_WANTED: 3,
-
-  // Day / night. dayTime 0..1: 0 = midnight, 0.25 = sunrise, 0.5 = noon,
-  // 0.75 = sunset. The game starts mid-morning so the city reads
-  // sun-soaked from the first frame.
-  DAY_LENGTH_SECONDS: 300,
-  DAY_START: 0.32,
-
-  // Traffic and crowds.
-  TRAFFIC_COUNT: 14,
-  PEDESTRIAN_COUNT: 24,
-  MAX_POLICE: 5,
-
-  // Collectibles.
-  SHELL_COUNT: 10,
+export const CITY = {
+  // Roads run on lines that are multiples of 40, from -160 to 160.
+  roadMin: -160,
+  roadMax: 160,
+  roadStep: 40,
+  roadWidth: 10,
+  // Blocks sit between the roads, centred on the +/-20 lines.
+  blockHalf: 20,
+  // South of the last road is open beach, then the sea.
+  beachStart: 160,
+  beachEnd: 222,
+  seaStart: 222,
+  // Nothing may drive or walk past this.
+  bound: 262,
 };
 
-// The story, in the game's own words. Dana "Dash" Reyes borrowed money
-// from the Marlin Club and has one hot afternoon to pay it back.
-export const STORY = {
-  hero: 'Dana "Dash" Reyes',
-  debt: 400,
-  creditor: 'Marlin Club',
-  title: 'Solmar Heat',
-  tagline: 'One hot afternoon. Four hundred dollars. No way out but through.',
-  intro:
-    'Solmar Bay is all sun, salt and bad decisions. Dash owes the Marlin Club $400 ' +
-    'and the sun is already going down on the deadline. Steal a car, run the ' +
-    'courier jobs, lose the heat — and pay up before the Club comes collecting.',
+export const ECONOMY = {
+  startMoney: 25,
+  missionReward: [150, 250, 400],
+  sprayCost: 75,
+  pickupValue: 25,
+  shellValue: 15,
+  taxiFare: 40,
+  pistolPrice: 0,
 };
 
-// Landmarks. Each one has a building spot (the visual, inside a block) and
-// a marker spot (the gameplay trigger, on a road next to it) — the marker is
-// what missions drive to, never the building centre.
-export const LANDMARKS = {
-  garage: {
-    name: 'Marina Garage',
-    building: { x: 160, z: -140 },
-    marker: { x: 140, z: -118 },
-    color: 0x2e7d6b,
-  },
-  hotel: {
-    name: 'Hotel Solmar',
-    building: { x: 40, z: -20 },
-    marker: { x: 20, z: 4 },
-    color: 0xd9a441,
-  },
-  lighthouse: {
-    name: 'Old Lighthouse',
-    building: { x: -160, z: 180 },
-    marker: { x: -140, z: 162 },
-    color: 0xe8e4d8,
-  },
-  spray: {
-    name: 'Spray Shop',
-    building: { x: -160, z: 60 },
-    marker: { x: -140, z: 42 },
-    color: 0x4a7fb5,
-  },
-  safehouse: {
-    name: 'Safehouse',
-    building: { x: -160, z: 100 },
-    marker: { x: -140, z: 118 },
-    color: 0x7a5fb5,
-  },
-  pier: {
-    name: 'The Pier',
-    building: { x: 60, z: 210 },
-    marker: { x: 60, z: 200 },
-    color: 0x8a6a4a,
-  },
+export const TUNING = {
+  walkSpeed: 6,
+  runSpeed: 9,
+  carAccel: 15,
+  carBrake: 34,
+  carReverseAccel: 10,
+  carMaxSpeed: 27,
+  carMaxReverse: 9,
+  carDrag: 0.55,
+  carTurnRate: 2.1,
+  trafficSpeed: 10,
+  policeSpeed: 25,
+  policeRamDamage: 3,
+  policeRamCooldown: 0.8,
+  wantedDecaySeconds: 45,
+  bustHoldSeconds: 2.5,
+  mission2Seconds: 240,
+  markerRadius: 10,
+  packageRadius: 9,
+  pickupRadius: 4.5,
+  healthRegenDelay: 10,
+  healthRegenRate: 1.5,
+  maxWanted: 5,
+  trafficCount: 14,
+  pedestrianCount: 24,
 };
 
-// The three story missions, in order.
+export const COLORS = {
+  sky: 0x8ec9e8,
+  fog: 0xa8d0e6,
+  ground: 0x9aa08a,
+  sidewalk: 0xb9b3a4,
+  road: 0x3a3d42,
+  roadLine: 0xd8d23a,
+  sand: 0xe2cf9e,
+  sea: 0x1e6f9e,
+  seaDeep: 0x155a80,
+  palmTrunk: 0x7a5230,
+  palmLeaf: 0x2e8b57,
+  lampPole: 0x2c2f33,
+  lampGlow: 0xffe9a8,
+};
+
+// Six landmarks. `at` is the building, `marker` the roadside objective point.
+export const LANDMARKS = [
+  { id: 'garage', name: 'Marina Garage', at: [140, -100], marker: [140, -118], color: 0xe2725b, height: 14 },
+  { id: 'hotel', name: 'Hotel Solmar', at: [20, 20], marker: [20, 4], color: 0xf2c14e, height: 34 },
+  { id: 'lighthouse', name: 'Old Lighthouse', at: [-140, 192], marker: [-140, 162], color: 0xf5f0e6, height: 40 },
+  { id: 'spray', name: 'Spray Shop', at: [-140, 60], marker: [-140, 42], color: 0x4ecdc4, height: 12 },
+  { id: 'safehouse', name: 'Safehouse', at: [-140, 100], marker: [-140, 120], color: 0x95a5a6, height: 11 },
+  { id: 'pier', name: 'The Pier', at: [60, 206], marker: [60, 200], color: 0x8b6f47, height: 6 },
+];
+
 export const MISSIONS = [
   {
     id: 'hot-wheels',
-    title: 'Hot Wheels',
-    brief:
-      'The Club wants a car. Any car. Steal the red Comet parked up the road ' +
-      'and bring it to the Marina Garage.',
-    objective: 'Steal a car and drive it to the Marina Garage',
+    title: 'Mission 1 — Hot Wheels',
+    brief: 'Dana owes the Marlin Club $400. Steal a car and take it to the Marina Garage.',
+    objective: 'Steal a car, then drive to the Marina Garage',
     reward: 150,
+    marker: [140, -118],
   },
   {
     id: 'sunset-courier',
-    title: 'Sunset Courier',
-    brief:
-      'Three packages, three drops, one sunset. The Pier, the Hotel Solmar, ' +
-      'then the Old Lighthouse — 240 seconds on the clock.',
-    objective: 'Deliver 3 packages before the timer runs out',
+    title: 'Mission 2 — Sunset Courier',
+    brief: 'Three packages, one sunset. Deliver them all before the clock runs out.',
+    objective: 'Deliver the packages to the Pier, the Hotel and the Lighthouse',
     reward: 250,
-    timeLimit: 240,
+    seconds: 240,
+    packages: [
+      { name: 'The Pier', at: [60, 200] },
+      { name: 'Hotel Solmar', at: [20, 4] },
+      { name: 'Old Lighthouse', at: [-140, 162] },
+    ],
   },
   {
     id: 'the-heat',
-    title: 'The Heat',
-    brief:
-      'The courier run lit up the whole city. Lose the three stars — the Spray ' +
-      'Shop can wash the car clean — then get to the Safehouse and pay the Club.',
-    objective: 'Lose 3 wanted stars, then reach the Safehouse',
+    title: 'Mission 3 — The Heat',
+    brief: 'Three stars and the whole bay is looking for you. Lose the heat, then vanish.',
+    objective: 'Lose your wanted level, then reach the Safehouse',
     reward: 400,
+    marker: [-140, 120],
   },
 ];
 
-// Cash bundles left lying around the city (green markers, $25 each).
-// Two of them sit on the story route on purpose; the rest reward exploring.
-export const CASH_PICKUPS = [
-  { x: 120, z: -120 },
-  { x: 120, z: 160 },
-  { x: 0, z: 120 },
-  { x: -40, z: -80 },
-  { x: 160, z: 40 },
-  { x: -120, z: -160 },
-  { x: 40, z: 200 },
-];
+export const PLAYER_SPAWN = { x: 80, z: -140, heading: Math.PI };
+export const RED_CAR = { x: 83, z: -120, heading: Math.PI / 2, color: 0xd21f2b, name: 'Comet' };
 
-// Golden shells hidden around Solmar Bay — a collectible hunt for free roam.
-export const SHELLS = [
-  { x: 44, z: 196 },
-  { x: -100, z: 196 },
-  { x: 140, z: 188 },
-  { x: -160, z: 188 },
-  { x: 20, z: 196 },
-  { x: -60, z: -160 },
-  { x: 100, z: 120 },
-  { x: -100, z: 80 },
-  { x: 160, z: -40 },
-  { x: 0, z: -120 },
-];
-
-// Stunt ramps: drive over one fast enough and the car goes airborne.
-export const RAMPS = [
-  { x: 40, z: 176, angle: 0 },
-  { x: -40, z: 176, angle: 0 },
-];
-
-// Parked cars. The first is the red Comet the first mission needs; the
-// rest are ordinary cars the player can steal. Every one sits on a road.
+// Parked cars besides the red one: [x, z, heading, color, name].
 export const PARKED_CARS = [
-  { x: 80, z: -120, color: 0xd23b2e, model: 'comet', red: true },
-  { x: -40, z: 120, color: 0x3b6fd2, model: 'sedan', red: false },
-  { x: 40, z: 40, color: 0xe8e4d8, model: 'sedan', red: false },
-  { x: -80, z: -40, color: 0x2e8a4a, model: 'coupe', red: false },
-  { x: 120, z: 80, color: 0xd9a441, model: 'sedan', red: false },
-  { x: 0, z: -40, color: 0xe8c832, model: 'taxi', red: false, taxi: true },
+  { x: -40, z: 116.5, heading: 0, color: 0x2e6fb7, name: 'Breeze' },
+  { x: 116.5, z: 40, heading: Math.PI / 2, color: 0xe8e8e8, name: 'Comet' },
+  { x: -116.5, z: -40, heading: -Math.PI / 2, color: 0x3fa34d, name: 'Vagabond' },
+  { x: 40, z: 163.5, heading: Math.PI, color: 0xf2a541, name: 'Sunrise' },
+  { x: -80, z: -116.5, heading: Math.PI, color: 0x8e44ad, name: 'Comet' },
 ];
 
-// Palette for the sun-soaked coast: sand, sea, white walls, terracotta.
-export const PALETTE = {
-  road: 0x3a3f46,
-  roadLine: 0xe8e4d8,
-  sidewalk: 0x9a938a,
-  sand: 0xe0c98f,
-  sea: 0x2e7fa8,
-  seaDeep: 0x1d5f86,
-  grass: 0x6fae5e,
-  buildingWall: 0xf2ead8,
-  buildingRoof: 0xc96a4a,
-  palmTrunk: 0x8a6a4a,
-  palmLeaf: 0x3f9e4d,
-  lampPost: 0x2c2f36,
-};
+// Cash pickups: [x, z]. The one on road x=120 sits on the courier route.
+export const CASH_PICKUPS = [
+  [120, 40],
+  [-160, 200],
+  [0, 200],
+  [160, -160],
+  [-40, -160],
+  [160, 80],
+];
 
-export function clamp(value, min, max) {
-  return value < min ? min : value > max ? max : value;
+// Golden shells on the beach, kept well off the driving lines (x=60, x=80).
+export const SHELLS = [
+  [44, 196],
+  [-100, 198],
+  [110, 210],
+];
+
+// Taxi stand: the cab waits here until the player drives it.
+export const TAXI = { x: 3.5, z: -40, heading: 0, color: 0xf7c948 };
+
+// Small deterministic random generator, used when ?seed= is given so a
+// staged scene always places the same traffic and pedestrians.
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-export function lerp(a, b, t) {
-  return a + (b - a) * t;
+export function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
 }
 
-export function distance2D(ax, az, bx, bz) {
+export function wrapAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+export function dist2d(ax, az, bx, bz) {
   const dx = ax - bx;
   const dz = az - bz;
   return Math.sqrt(dx * dx + dz * dz);
 }
 
-export function angleTo(ax, az, bx, bz) {
-  return Math.atan2(bx - ax, bz - az);
-}
-
-export function angleDiff(a, b) {
-  let d = b - a;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return d;
+// Forward direction for a heading: heading 0 faces +z (south), PI/2 faces +x.
+export function forwardOf(heading) {
+  return { x: Math.sin(heading), z: Math.cos(heading) };
 }
