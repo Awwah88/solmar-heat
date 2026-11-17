@@ -1,69 +1,74 @@
 # Solmar Heat — a make.fun "Make GTA 6" (gta6-01) entry
 
-**Solmar Heat** is an original open-world crime game in the fictional sun-soaked
-coastal city of Solmar Bay. Dana "Dash" Reyes, a courier with a debt to the
-Marlin Club, has three jobs to finish: steal a ride, run the sunset courier
-route, and lose the heat. Nothing in it is taken from any commercial game —
-the city, people, cars, names, story, art, sound and music are all invented
-for this game.
+**Solmar Heat** is a 3D open-world crime game set in Solmar Bay, a
+fictional sun-soaked coastal city. You play Dana "Dash" Reyes, a courier
+who owes the Marlin Club $400 by Sunday. Three jobs stand between Dana
+and freedom: steal a ride, run the sunset courier route, and lose the
+heat. Everything in the game — the city, its people and cars, the names,
+the story, the art, the sound and the music — was invented for it.
+Nothing is taken from any commercial game.
 
-## Play it
+## Running it
+
+The game is plain static files; there is no build step and no network.
 
 ```sh
 node serve.ts
-# open http://localhost:8080 in desktop Chrome
+# then open http://localhost:8080 in desktop Chrome
 ```
 
-No build step, no network: `game/index.html` and everything it loads live
-under `game/`, including a vendored three.js build
-(`game/vendor/three.module.min.js`, Three.js r180, MIT).
+`game/index.html` loads its ES modules and a vendored three.js build
+(`game/vendor/three.module.min.js`, Three.js r180, MIT) from under
+`game/`.
 
-## Controls
+## How it plays
 
-| Key | Action |
+| Key | What it does |
 | --- | ------ |
-| W A S D | Move / drive |
+| W A S D | Move on foot / drive |
 | Mouse drag | Look around |
 | Shift | Sprint |
-| E | Enter / exit car, deliver, pick up |
-| Space | Handbrake (in car) |
+| E | Enter or exit a car, deliver, pick up |
+| Space | Handbrake while driving |
 | F | Punch |
-| Click | Shoot (after Mission 2) |
+| Click | Shoot, once you have the pistol (after Mission 2) |
 | T | Start a taxi fare |
 | M | Music on / off |
 | P / Esc | Pause |
-| R | Restart from last save |
+| R | Restart from the last save |
 
-## What is in the game
+## What is inside
 
-- **A complete open world:** a 9×9-block city with roads, traffic, pedestrians,
-  a beach and the sea, explored on foot and by car.
-- **Cars to steal:** parked cars and traffic cars (stealing one raises your
-  wanted level); arcade driving with handbrake drift.
-- **Wanted level and police:** 0–5 stars, police cars that chase and ram you,
-  a Spray Shop that clears your wanted level for $75, Busted and Wasted.
-- **Missions and story:** three story missions (Hot Wheels, Sunset Courier,
-  The Heat), a taxi side job, cash pickups, and a win screen when all three
-  missions are done.
-- **Combat:** punch and, after Mission 2, a pistol.
-- **HUD with minimap:** money, health, wanted stars, mission objectives and
-  timer, speed, and a live top-down minimap showing the player, traffic,
-  police and the mission marker.
-- **Start screen, pause menu, and a save** in localStorage (autosaves on
-  mission completion and every 30 seconds).
-- **Sound and music:** engine hum, police sirens, effects and a sunset pad
-  loop, all synthesized live with WebAudio — no audio files.
+- **A complete open world.** A 9×9-block city with roads, traffic and
+  pedestrians, a beach and the sea, explored on foot and by car.
+- **Cars to steal.** Parked cars and traffic cars — stealing one raises
+  your wanted level. Arcade driving with handbrake drift.
+- **Wanted level and police.** 0–5 stars, police cars that chase and ram
+  you, a Spray Shop that clears your wanted level for $75, and Busted
+  and Wasted endings.
+- **Missions and story.** Three story missions — Hot Wheels, Sunset
+  Courier, The Heat — plus a taxi side job, cash pickups, and a win
+  screen ("Solmar Legend") when all three missions are done.
+- **Combat.** Punching, and a pistol with 24 rounds after Mission 2.
+- **HUD with a live minimap.** Money, health, wanted stars, mission
+  objectives and a timer, speed, and a top-down map showing the player,
+  traffic, police and the mission marker.
+- **Menus and a save.** A start screen, a pause menu, and a save in
+  localStorage that autosaves when a mission completes and every
+  30 seconds.
+- **Sound and music.** Engine hum, police sirens, effects and a sunset
+  pad loop, all synthesized live with WebAudio — no audio files.
 
 ## Screenshots
 
-`?shot=cover`, `?shot=foot`, `?shot=mission` and `?shot=menu` stage real
-gameplay scenes for the four screenshots in `screenshots/`.
+The four screenshots in `screenshots/` are real gameplay scenes staged
+through `?shot=cover`, `?shot=foot`, `?shot=mission` and `?shot=menu`.
 
-## Entry
+## The entry itself
 
-`main.ts` (Node 22, standard library only) copies `game/` and `screenshots/`
-to `/output` and writes `/output/dossier.json` with the vendored
-`vendor/makefun-game.ts`. Run it with:
+`main.ts` (Node 22, standard library only) copies `game/` and
+`screenshots/` to `/output` and writes `/output/dossier.json` using the
+vendored `vendor/makefun-game.ts`:
 
 ```sh
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
