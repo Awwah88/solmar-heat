@@ -1,84 +1,121 @@
 // Solmar Heat — combat.js
-// Fighting: health, punching, shooting, and getting hurt. Combat never
-// touches the world directly — it asks the Game to resolve hits and to
-// end the run when health reaches zero.
-//
-// Punching (F) has a short cooldown and knocks down the nearest
-// pedestrian in front. Shooting (mouse click) needs the pistol from
-// Mission 2 and spends one round per shot; a glowing tracer shows the
-// shot line for a fraction of a second.
+// Health, fists and the pistol. On foot the player can punch the nearest
+// pedestrian and, once Mission 2 hands it over, shoot. Health drops from
+// police rams and falls; at zero the player is wasted and wakes up at
+// the Safehouse poorer but alive.
 
-import * as THREE from 'three';
-import { clamp } from './config.js';
+import { CONFIG, distance2D } from './config.js';
 
 export class Combat {
-  constructor(scene, game) {
-    this.scene = scene;
+  constructor(game) {
     this.game = game;
-    this.health = 100;
-    this.armed = false;
+    this.health = CONFIG.START_HEALTH;
+    this.hasPistol = false;
     this.ammo = 0;
     this.punchCooldown = 0;
-    this.shotCooldown = 0;
-    // Bullet tracers are short-lived glowing boxes; they leave the
-    // scene a fraction of a second after firing.
-    this.tracers = [];
-    this.tracerGeo = new THREE.BoxGeometry(0.12, 0.12, 6);
-    this.tracerMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
+    this.shootCooldown = 0;
+    this.flashTimer = 0; // red vignette timer after taking damage
   }
 
-  takeDamage(amount) {
-    this.health = clamp(this.health - amount, 0, 100);
-    this.game.hud.flashDamage();
+  damage(amount, source) {
+    if (this.game.state !== 'playing') return;
+    this.health = Math.max(0, this.health - amount);
+    this.flashTimer = 0.6;
     if (this.health <= 0) this.game.wasted();
+    void source;
   }
 
   heal(amount) {
-    this.health = clamp(this.health + amount, 0, 100);
+    this.health = Math.min(CONFIG.START_HEALTH, this.health + amount);
   }
 
-  // Throw a punch at whatever is right in front of the player.
-  tryPunch() {
+  givePistol() {
+    this.hasPistol = true;
+    this.ammo = 48;
+  }
+
+  update(dt) {
+    this.punchCooldown = Math.max(0, this.punchCooldown - dt);
+    this.shootCooldown = Math.max(0, this.shootCooldown - dt);
+    this.flashTimer = Math.max(0, this.flashTimer - dt);
+  }
+
+  // A short-range punch at the nearest person in front of the player.
+  punch(playerPos, heading) {
+    if (this.punchCooldown > 0) return false;
     this.punchCooldown = 0.45;
-    this.game.audio.blip(180, 0.12, 'square', 0.2);
-    this.game.hitNearby(2.6, 18);
+    const reach = 2.6;
+    const fx = playerPos.x + Math.sin(heading) * 1.4;
+    const fz = playerPos.z + Math.cos(heading) * 1.4;
+    const victim = this.game.pedestrians.nearest(fx, fz, reach);
+    if (victim) {
+      victim.knockDown();
+      this.game.audio.punch();
+      this.game.score += 5;
+      this.game.police.addWanted(1);
+      return true;
+    }
+    // Whiff: still make the sound so the punch feels real.
+    this.game.audio.punch();
+    return false;
   }
 
-  // Fire one round along the camera's view direction, leaving a tracer.
-  fireShot(playerPos, camera) {
-    this.shotCooldown = 0.28;
+  // Fire the pistol at the nearest target in front of the player —
+  // a pedestrian, or a police car. Loud, so it draws the heat.
+  shoot(playerPos, heading) {
+    if (!this.hasPistol || this.ammo <= 0 || this.shootCooldown > 0) return false;
+    this.shootCooldown = 0.35;
     this.ammo -= 1;
     this.game.audio.gunshot();
-    const start = new THREE.Vector3(playerPos.x, 1.4, playerPos.z);
-    const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    const tracer = new THREE.Mesh(this.tracerGeo, this.tracerMat);
-    tracer.position.copy(start).addScaledVector(dir, 3);
-    tracer.lookAt(start.clone().addScaledVector(dir, 9));
-    this.scene.add(tracer);
-    this.tracers.push({ mesh: tracer, life: 0.09 });
-    this.game.shootHit(start, dir);
-  }
-
-  // Age the tracers out of the scene.
-  ageTracers(dt) {
-    this.tracers = this.tracers.filter((t) => {
-      t.life -= dt;
-      if (t.life <= 0) {
-        this.scene.remove(t.mesh);
-        return false;
+    this.game.police.addWanted(CONFIG.SHOOT_WANTED);
+    const fx = Math.sin(heading);
+    const fz = Math.cos(heading);
+    let best = null;
+    let bestAlong = 40;
+    for (const person of this.game.pedestrians.people) {
+      if (person.state === 'down') continue;
+      const dx = person.pos.x - playerPos.x;
+      const dz = person.pos.z - playerPos.z;
+      const along = dx * fx + dz * fz;
+      const across = Math.abs(dx * fz - dz * fx);
+      if (along > 1 && along < bestAlong && across < 2.5) {
+        bestAlong = along;
+        best = person;
       }
+    }
+    if (best) {
+      best.knockDown();
+      this.game.score += 10;
       return true;
-    });
+    }
+    // No pedestrian in the cone: try a police car instead.
+    for (const car of this.game.police.policeCars) {
+      const dx = car.pos.x - playerPos.x;
+      const dz = car.pos.z - playerPos.z;
+      const along = dx * fx + dz * fz;
+      const across = Math.abs(dx * fz - dz * fx);
+      if (along > 1 && along < 38 && across < 3) {
+        car.speed *= 0.4;
+        this.game.score += 15;
+        return true;
+      }
+    }
+    return true;
   }
 
-  update(dt, input, playerPos, playerAngle, camera) {
-    this.punchCooldown -= dt;
-    this.shotCooldown -= dt;
-    if (input.wasPressed('KeyF') && this.punchCooldown <= 0) this.tryPunch();
-    if (input.clicked && this.armed && this.ammo > 0 && this.shotCooldown <= 0) {
-      this.fireShot(playerPos, camera);
-    }
-    this.ageTracers(dt);
+  // A tracer line the world draws for a split second after a shot.
+  tracerFrom(playerPos, heading) {
+    const fx = Math.sin(heading);
+    const fz = Math.cos(heading);
+    return {
+      x1: playerPos.x + fx * 1.2,
+      z1: playerPos.z + fz * 1.2,
+      x2: playerPos.x + fx * 34,
+      z2: playerPos.z + fz * 34,
+    };
+  }
+
+  get alive() {
+    return this.health > 0;
   }
 }
