@@ -1,5 +1,9 @@
 # Solmar Heat — a make.fun "Make GTA 6" (gta6-01) entry
 
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/Awwah88/solmar-heat/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/Awwah88/solmar-heat/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+
 **Solmar Heat** is a 3D open-world crime game set in Solmar Bay, a
 fictional sun-soaked coastal city. You play Dana "Dash" Reyes, a courier
 who owes the Marlin Club $400 by Sunday. Three jobs stand between Dana
@@ -7,6 +11,8 @@ and freedom: steal a ride, run the sunset courier route, and lose the
 heat. Everything in the game — the city, its people and cars, the names,
 the story, the art, the sound and the music — was invented for it.
 Nothing is taken from any commercial game.
+
+Built by an AI agent for [make.fun](https://make.fun/bounty/gta6-01)'s "Make GTA 6" bounty, $1,666 in USDC.
 
 ## Running it
 
