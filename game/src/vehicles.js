@@ -1,12 +1,19 @@
 // Solmar Heat — vehicles.js
-// One clear job: cars — how they look, how the player drives one, and how
-// the city's traffic drives itself along the road grid.
+// Cars: how they look, how the player drives one, and how the city's
+// traffic drives itself along the road grid. A car is a low-poly box
+// build — body, cabin, wheels, lights — with an arcade driving model.
+//
+// Traffic cars cruise one road line at a time. At an intersection they
+// sometimes turn onto the crossing road; at the city edge they U-turn.
+// They brake for the car ahead on their lane and never leave the roads.
+
 import * as THREE from 'three';
 import { clamp, distance2D, mulberry32 } from './config.js';
 
 const CAR_COLORS = [0xd23b3b, 0x2a6fd6, 0xf2c230, 0x37b268, 0xe8e8e8, 0x7a4fd0, 0xff8c42, 0x3aa7a3];
 
-// Build a low-poly car from boxes: body, cabin, wheels, headlights, tail lights.
+// Build a low-poly car from boxes: body, cabin, wheels, headlights,
+// tail lights, and — for police cars — a white stripe and a light bar.
 export function makeCarMesh(color, isPolice = false) {
   const group = new THREE.Group();
   const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.5 });
@@ -21,26 +28,7 @@ export function makeCarMesh(color, isPolice = false) {
   cabin.position.set(0, 1.1, -0.25);
   cabin.castShadow = true;
   group.add(cabin);
-  if (isPolice) {
-    const stripe = new THREE.Mesh(
-      new THREE.BoxGeometry(2.12, 0.2, 4.42),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }),
-    );
-    stripe.position.y = 0.62;
-    group.add(stripe);
-    const bar = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 0.18, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff2020, emissiveIntensity: 1.4 }),
-    );
-    bar.position.set(0, 1.48, -0.25);
-    group.add(bar);
-    const barB = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 0.18, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0x2a6bff, emissive: 0x2040ff, emissiveIntensity: 1.4 }),
-    );
-    barB.position.set(0, 1.48, 0.15);
-    group.add(barB);
-  }
+  if (isPolice) addPoliceTrim(group);
   const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.32, 10);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.9 });
   [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.45], [0.95, -1.45]].forEach(([x, z]) => {
@@ -65,6 +53,27 @@ export function makeCarMesh(color, isPolice = false) {
   return group;
 }
 
+function addPoliceTrim(group) {
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(2.12, 0.2, 4.42),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }),
+  );
+  stripe.position.y = 0.62;
+  group.add(stripe);
+  const barR = new THREE.Mesh(
+    new THREE.BoxGeometry(1.2, 0.18, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff2020, emissiveIntensity: 1.4 }),
+  );
+  barR.position.set(0, 1.48, -0.25);
+  group.add(barR);
+  const barB = new THREE.Mesh(
+    new THREE.BoxGeometry(1.2, 0.18, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0x2a6bff, emissive: 0x2040ff, emissiveIntensity: 1.4 }),
+  );
+  barB.position.set(0, 1.48, 0.15);
+  group.add(barB);
+}
+
 export class Car {
   constructor(scene, color, x, z, angle, isPolice = false) {
     this.mesh = makeCarMesh(color, isPolice);
@@ -79,7 +88,7 @@ export class Car {
     this.isPolice = isPolice;
     this.health = 100;
     this.parked = false;
-    this.driver = null; // 'player' | 'traffic' | null
+    this.driver = null; // 'player' | 'traffic' | 'police' | null
     this.hitCooldown = 0;
   }
 
@@ -87,8 +96,8 @@ export class Car {
     return { x: Math.sin(this.angle), z: Math.cos(this.angle) };
   }
 
-  // Arcade driving: throttle, brake/reverse, steering that bites less at
-  // speed, handbrake drift. Returns distance moved this frame.
+  // Arcade driving: throttle, brake/reverse, steering that bites less
+  // at speed, handbrake drift. Returns distance moved this frame.
   drive(input, dt) {
     const throttle = input.moveY();
     const steerInput = input.moveX();
@@ -119,8 +128,6 @@ export class Car {
   }
 }
 
-// Traffic: cars that cruise the road grid, turn at intersections, and brake
-// for the car ahead. They never leave the roads.
 export class TrafficSystem {
   constructor(scene) {
     this.cars = [];
@@ -143,45 +150,53 @@ export class TrafficSystem {
     }
   }
 
+  // The nearest other car ahead of `car` on its lane, if any is close.
+  findCarAhead(car, others) {
+    let ahead = null;
+    let aheadDist = 999;
+    others.forEach((other) => {
+      if (other === car || other.parked) return;
+      const d = distance2D(car.pos.x, car.pos.z, other.pos.x, other.pos.z);
+      if (d >= aheadDist) return;
+      const f = car.forward();
+      const dx = other.pos.x - car.pos.x;
+      const dz = other.pos.z - car.pos.z;
+      if (dx * f.x + dz * f.z > 0 && d < 14) {
+        ahead = other;
+        aheadDist = d;
+      }
+    });
+    return { ahead, aheadDist };
+  }
+
+  // At an intersection, sometimes turn onto the crossing road, snapping
+  // back onto a road line with the lane offset; at the city edge, U-turn.
+  maybeTurn(car, dt) {
+    const onIntersection =
+      Math.abs(((car.pos.x % 40) + 40) % 40) < 1.2 || Math.abs(((car.pos.z % 40) + 40) % 40) < 1.2;
+    if (onIntersection && Math.random() < dt * 0.25) {
+      car.horizontal = !car.horizontal;
+      car.angle = car.horizontal ? (car.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : car.dir > 0 ? 0 : Math.PI;
+      car.pos.x = Math.round(car.pos.x / 40) * 40 + (car.horizontal ? 0 : car.lane);
+      car.pos.z = Math.round(car.pos.z / 40) * 40 + (car.horizontal ? car.lane : 0);
+    }
+    if (car.pos.x > 178 || car.pos.x < -178 || car.pos.z > 198 || car.pos.z < -178) {
+      car.dir *= -1;
+      car.angle += Math.PI;
+    }
+  }
+
   update(dt, playerCar, policeCars) {
-    const rand = Math.random;
+    const all = [...this.cars, playerCar, ...policeCars].filter(Boolean);
     this.cars.forEach((car) => {
-      // Brake for the car ahead on the same lane.
-      let ahead = null;
-      let aheadDist = 999;
-      const all = [...this.cars, playerCar, ...policeCars].filter(Boolean);
-      all.forEach((other) => {
-        if (other === car || other.parked) return;
-        const d = distance2D(car.pos.x, car.pos.z, other.pos.x, other.pos.z);
-        if (d < aheadDist) {
-          const f = car.forward();
-          const dx = other.pos.x - car.pos.x;
-          const dz = other.pos.z - car.pos.z;
-          if (dx * f.x + dz * f.z > 0 && d < 14) {
-            ahead = other;
-            aheadDist = d;
-          }
-        }
-      });
+      const { ahead, aheadDist } = this.findCarAhead(car, all);
       const targetSpeed = ahead && aheadDist < 10 ? 0 : car.cruise;
       car.speed += (targetSpeed - car.speed) * Math.min(1, dt * 1.5);
       const f = car.forward();
       car.pos.x += f.x * car.speed * dt;
       car.pos.z += f.z * car.speed * dt;
       car.mesh.rotation.y = car.angle;
-      // Turn at an intersection sometimes; U-turn at the city edge.
-      const onIntersection =
-        Math.abs(((car.pos.x % 40) + 40) % 40) < 1.2 || Math.abs(((car.pos.z % 40) + 40) % 40) < 1.2;
-      if (onIntersection && rand() < dt * 0.25) {
-        car.horizontal = !car.horizontal;
-        car.angle = car.horizontal ? (car.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : car.dir > 0 ? 0 : Math.PI;
-        car.pos.x = Math.round(car.pos.x / 40) * 40 + (car.horizontal ? 0 : car.lane);
-        car.pos.z = Math.round(car.pos.z / 40) * 40 + (car.horizontal ? car.lane : 0);
-      }
-      if (car.pos.x > 178 || car.pos.x < -178 || car.pos.z > 198 || car.pos.z < -178) {
-        car.dir *= -1;
-        car.angle += Math.PI;
-      }
+      this.maybeTurn(car, dt);
     });
   }
 }

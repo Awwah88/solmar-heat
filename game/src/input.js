@@ -1,17 +1,31 @@
 // Solmar Heat — input.js
-// One clear job: keyboard and mouse state, nothing else.
+// Keyboard + mouse state only. The game reads this once per frame and
+// then calls consumeFrame() so one-frame presses (wasPressed, clicked)
+// clear. Keys are tracked by event.code, so the layout is the physical
+// one — WASD works the same on any keyboard layout.
+//
+// Mouse look works by dragging: press and hold on the canvas, then
+// move. A plain click (press without a drag) is the shoot action.
+
 export class Input {
   constructor(canvas) {
+    this.canvas = canvas;
+    // Keys currently held down, by event.code.
     this.keys = new Set();
+    // Keys pressed since the last consumeFrame().
+    this.pressed = new Set();
+    // Mouse drag deltas accumulated this frame.
     this.mouseDX = 0;
     this.mouseDY = 0;
     this.clicked = false;
-    this.pressed = new Set();
-    this.canvas = canvas;
     this.dragging = false;
     this.lastX = 0;
     this.lastY = 0;
+    this.bindKeyboard();
+    this.bindMouse(canvas);
+  }
 
+  bindKeyboard() {
     window.addEventListener('keydown', (event) => {
       if (event.repeat) return;
       this.keys.add(event.code);
@@ -23,6 +37,13 @@ export class Input {
     window.addEventListener('keyup', (event) => {
       this.keys.delete(event.code);
     });
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.dragging = false;
+    });
+  }
+
+  bindMouse(canvas) {
     canvas.addEventListener('mousedown', (event) => {
       this.dragging = true;
       this.lastX = event.clientX;
@@ -39,28 +60,26 @@ export class Input {
       this.lastX = event.clientX;
       this.lastY = event.clientY;
     });
-    window.addEventListener('blur', () => {
-      this.keys.clear();
-      this.dragging = false;
-    });
   }
 
   isDown(code) {
     return this.keys.has(code);
   }
 
-  // True once, on the frame the key was pressed.
+  // True only on the frame the key went down.
   wasPressed(code) {
     return this.pressed.has(code);
   }
 
-  // Steering / movement axes, -1..1.
+  // Movement axes, each -1..1. Left/right and forward/back, with the
+  // arrow keys as alternates for WASD.
   moveX() {
     let x = 0;
     if (this.isDown('KeyA') || this.isDown('ArrowLeft')) x -= 1;
     if (this.isDown('KeyD') || this.isDown('ArrowRight')) x += 1;
     return x;
   }
+
   moveY() {
     let y = 0;
     if (this.isDown('KeyW') || this.isDown('ArrowUp')) y += 1;

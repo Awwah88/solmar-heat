@@ -1,8 +1,16 @@
 // Solmar Heat — missions.js
-// One clear job: the story — three missions, their objectives, timers and
-// rewards, plus the repeatable taxi side job.
-import { MISSIONS, SIDE_JOBS } from './config.js';
-import { distance2D } from './config.js';
+// The story: three missions, their objectives, timers and rewards, plus
+// the repeatable taxi side job. The mission system owns the story state
+// and tells the HUD what to show; the Game owns money, the player and
+// the police, which the missions call into.
+//
+// Each mission has its own per-frame check (checkHotWheels,
+// checkCourier, checkHeat) so the update loop just dispatches on the
+// active mission's id. Courier drop-offs run in a fixed order — Pier,
+// Hotel Solmar, Old Lighthouse — and the clock resets the run if it
+// runs out.
+
+import { MISSIONS, SIDE_JOBS, distance2D } from './config.js';
 
 export class MissionSystem {
   constructor(game) {
@@ -23,6 +31,15 @@ export class MissionSystem {
 
   get finished() {
     return this.done.every(Boolean);
+  }
+
+  // The three courier drop-off points, in delivery order.
+  courierSpots() {
+    return [
+      this.game.city.markers.pier,
+      this.game.city.markers.hotel,
+      this.game.city.markers.lighthouse,
+    ];
   }
 
   start() {
@@ -53,12 +70,7 @@ export class MissionSystem {
   }
 
   setPackageMarker() {
-    const spots = [
-      this.game.city.markers.pier,
-      this.game.city.markers.hotel,
-      this.game.city.markers.lighthouse,
-    ];
-    const spot = spots[this.packageIndex];
+    const spot = this.courierSpots()[this.packageIndex];
     this.game.hud.setMarker(spot, `PACKAGE ${this.packageIndex + 1}/3`);
   }
 
@@ -72,6 +84,7 @@ export class MissionSystem {
     this.index += 1;
     this.step = 0;
     if (m.id === 'sunset-courier') {
+      // Finishing the courier run earns the pistol.
       this.game.combat.armed = true;
       this.game.combat.ammo += 24;
       this.game.hud.toast('You got a pistol — 24 rounds. Click to shoot, F to punch.');
@@ -84,57 +97,66 @@ export class MissionSystem {
     }
   }
 
+  // Mission 1: steal a car, then drive it to the Marina Garage.
+  checkHotWheels(m) {
+    if (this.step === 0 && this.game.player.car) {
+      this.step = 1;
+      this.game.hud.setObjective(m.title, 'Nice wheels. Now drive to the Marina Garage marker.');
+    }
+    if (this.step === 1 && this.game.player.car) {
+      const g = this.game.city.markers.garage;
+      const p = this.game.player.pos;
+      if (distance2D(p.x, p.z, g.x, g.z) < 8) this.completeMission();
+    }
+  }
+
+  // Mission 2: three packages on a 4-minute clock.
+  checkCourier(m, dt) {
+    this.timer -= dt;
+    this.game.hud.setTimer(Math.max(0, Math.ceil(this.timer)));
+    if (this.timer <= 0) {
+      this.game.hud.toast('Courier run failed — the clock ran out. Try again from the pause menu.');
+      this.timer = m.timeLimit;
+      this.packageIndex = 0;
+      this.setPackageMarker();
+      return;
+    }
+    const spot = this.courierSpots()[this.packageIndex];
+    const p = this.game.player.pos;
+    if (distance2D(p.x, p.z, spot.x, spot.z) < 7) {
+      this.game.addMoney(0);
+      this.game.audio.coin();
+      this.packageIndex += 1;
+      this.game.hud.toast(`Package ${this.packageIndex}/3 delivered`);
+      if (this.packageIndex >= 3) this.completeMission();
+      else this.setPackageMarker();
+    }
+  }
+
+  // Mission 3: lose all wanted stars, then reach the Safehouse.
+  checkHeat(m) {
+    if (this.step === 0 && this.game.police.wanted === 0) {
+      this.step = 1;
+      this.game.hud.setObjective(m.title, 'Clean! Now reach the blue Safehouse marker.');
+    }
+    if (this.step === 1) {
+      const s = this.game.city.markers.safehouse;
+      const p = this.game.player.pos;
+      if (distance2D(p.x, p.z, s.x, s.z) < 8) this.completeMission();
+    }
+  }
+
   // Called every frame while playing.
   update(dt) {
     if (!this.active || this.finished) return;
     const m = this.current;
-    const p = this.game.player.pos;
-    if (m.id === 'hot-wheels') {
-      if (this.step === 0 && this.game.player.car) {
-        this.step = 1;
-        this.game.hud.setObjective(m.title, 'Nice wheels. Now drive to the Marina Garage marker.');
-      }
-      if (this.step === 1 && this.game.player.car) {
-        const g = this.game.city.markers.garage;
-        if (distance2D(p.x, p.z, g.x, g.z) < 8) this.completeMission();
-      }
-    } else if (m.id === 'sunset-courier') {
-      this.timer -= dt;
-      this.game.hud.setTimer(Math.max(0, Math.ceil(this.timer)));
-      if (this.timer <= 0) {
-        this.game.hud.toast('Courier run failed — the clock ran out. Try again from the pause menu.');
-        this.timer = m.timeLimit;
-        this.packageIndex = 0;
-        this.setPackageMarker();
-        return;
-      }
-      const spots = [
-        this.game.city.markers.pier,
-        this.game.city.markers.hotel,
-        this.game.city.markers.lighthouse,
-      ];
-      const spot = spots[this.packageIndex];
-      if (distance2D(p.x, p.z, spot.x, spot.z) < 7) {
-        this.game.addMoney(0);
-        this.game.audio.coin();
-        this.packageIndex += 1;
-        this.game.hud.toast(`Package ${this.packageIndex}/3 delivered`);
-        if (this.packageIndex >= 3) this.completeMission();
-        else this.setPackageMarker();
-      }
-    } else if (m.id === 'the-heat') {
-      if (this.step === 0 && this.game.police.wanted === 0) {
-        this.step = 1;
-        this.game.hud.setObjective(m.title, 'Clean! Now reach the blue Safehouse marker.');
-      }
-      if (this.step === 1) {
-        const s = this.game.city.markers.safehouse;
-        if (distance2D(p.x, p.z, s.x, s.z) < 8) this.completeMission();
-      }
-    }
+    if (m.id === 'hot-wheels') this.checkHotWheels(m);
+    else if (m.id === 'sunset-courier') this.checkCourier(m, dt);
+    else if (m.id === 'the-heat') this.checkHeat(m);
   }
 
-  // Taxi side job: T near a waiting passenger, drive them to the destination.
+  // Taxi side job: press T near a waiting passenger, drive them to the
+  // destination for a fare.
   tryTaxi() {
     if (this.taxi) return;
     const p = this.game.player.pos;

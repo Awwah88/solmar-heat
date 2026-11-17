@@ -1,7 +1,9 @@
 // Solmar Heat — main.js
-// One clear job: start the game. Create the renderer and the Game, stage a
-// screenshot scene when ?shot= is given, and report a readable error if
-// WebGL cannot start.
+// Bootstrap: create the renderer and the Game, stage a screenshot scene
+// when ?shot= is given, and report a readable error if WebGL cannot
+// start. The game instance is exposed as window.__solmarHeat so test
+// scripts (and the curious) can inspect the running game.
+
 import { Game } from './world.js';
 import { stageShot } from './shots.js';
 
@@ -17,13 +19,19 @@ function showError(message) {
   console.error(message);
 }
 
-let game = null;
-try {
-  game = new Game(canvas);
-  window.__solmarHeat = game;
-} catch (err) {
-  showError(`Solmar Heat could not start: ${err && err.message ? err.message : err} — try desktop Chrome with WebGL enabled.`);
+function boot() {
+  let game = null;
+  try {
+    game = new Game(canvas);
+    window.__solmarHeat = game;
+  } catch (err) {
+    showError(`Solmar Heat could not start: ${err && err.message ? err.message : err} — try desktop Chrome with WebGL enabled.`);
+    return null;
+  }
+  return game;
 }
+
+const game = boot();
 
 // Screenshot staging: ?shot=menu|cover|foot|mission plays a real scene
 // through the game's own systems, so the frame is a genuine render.

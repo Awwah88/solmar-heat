@@ -1,11 +1,53 @@
-// Solmar Heat — config.js
-// One clear job: every constant, name and number the game shares, plus a
-// deterministic random generator so the city looks the same every run.
+// Solmar Heat — shared constants and helpers.
+// Everything the modules agree on lives here: the city grid, the palette,
+// the story text, the mission table, and a few small math helpers plus a
+// seeded random generator so every run builds the same city.
+
 export const GAME_TITLE = 'SOLMAR HEAT';
 export const GAME_SUBTITLE = 'An open-world crime story in Solmar Bay';
 
-// City layout: a 9x9 road grid. Roads run every 40 units from -160 to 160.
-// Blocks are the 32-unit squares between roads; the beach is south (z > 170).
+// --- Small math helpers -------------------------------------------------
+export function clamp(value, min, max) {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+export function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+// Interpolate between two headings along the shorter arc.
+export function angleLerp(a, b, t) {
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
+
+export function distance2D(ax, az, bx, bz) {
+  const dx = ax - bx;
+  const dz = az - bz;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+
+// Seeded PRNG (mulberry32). Same seed, same city — traffic, pedestrians
+// and buildings land identically on every load, which keeps screenshots
+// reproducible.
+export function mulberry32(seed) {
+  let state = seed >>> 0;
+  return function nextRandom() {
+    state |= 0;
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// --- City geometry ------------------------------------------------------
+// Roads form a 9x9 grid, one every 40 units from -160 to 160. The blocks
+// between roads are 30-unit squares; the beach starts south of z = 172.
 export const CITY = {
   half: 180,
   roadStep: 40,
@@ -33,38 +75,8 @@ export const COLORS = {
   policeLightB: 0x2a6bff,
 };
 
-// Deterministic RNG (mulberry32) so the city, traffic and pedestrians are
-// identical on every load — screenshots stay reproducible.
-export function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function random() {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-export function clamp(value, min, max) {
-  return value < min ? min : value > max ? max : value;
-}
-export function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-export function angleLerp(a, b, t) {
-  let d = (b - a) % (Math.PI * 2);
-  if (d > Math.PI) d -= Math.PI * 2;
-  if (d < -Math.PI) d += Math.PI * 2;
-  return a + d * t;
-}
-export function distance2D(ax, az, bx, bz) {
-  const dx = ax - bx;
-  const dz = az - bz;
-  return Math.sqrt(dx * dx + dz * dz);
-}
-
-// Story and mission definitions. All names, places and people are original.
+// --- Story --------------------------------------------------------------
+// All names, places and people are invented for this game.
 export const STORY = {
   hero: 'Dana "Dash" Reyes',
   heroLine: 'A courier with a fast car, a faster temper, and a debt to pay.',

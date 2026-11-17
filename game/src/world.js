@@ -1,10 +1,19 @@
 // Solmar Heat — world.js
-// One clear job: the Game itself — the state machine (menu / playing /
-// paused / busted / wasted / win), the third-person camera, on-foot and
-// driving movement, collisions, pickups, the spray shop, and the frame loop
-// that wires every system together.
+// The Game itself: the state machine (menu / playing / paused / busted /
+// wasted / win), the third-person camera, on-foot and driving movement,
+// collisions, pickups, the spray shop, and the frame loop that wires
+// every system together.
+//
+// How a frame works: loop() measures dt and, while playing, hands it to
+// update(), which runs in a fixed order — camera orbit, autopilot (only
+// used by screenshot staging), car entry, movement, spray shop, cash
+// pickups, the traffic / pedestrian / police / mission / combat systems,
+// the mission beacon, the chase camera, and finally the HUD, audio and
+// autosave. Each of those steps lives in its own small method below so
+// the order is easy to read and to change.
+
 import * as THREE from 'three';
-import { CITY, SIDE_JOBS, clamp, distance2D, lerp } from './config.js';
+import { SIDE_JOBS, clamp, distance2D, lerp } from './config.js';
 import { buildCity } from './city.js';
 import { Car, TrafficSystem } from './vehicles.js';
 import { PedestrianSystem } from './pedestrians.js';
@@ -16,6 +25,7 @@ import { AudioEngine } from './audio.js';
 import { Input } from './input.js';
 import { loadGame, saveGame as persistSave } from './save.js';
 
+// Dana on foot: a teal shirt, a red cap, dark trousers.
 function makePlayerMesh() {
   const group = new THREE.Group();
   const torso = new THREE.Mesh(
@@ -47,6 +57,9 @@ function makePlayerMesh() {
   return group;
 }
 
+// Push a circle (the player on foot, or a car) out of every building
+// collider it overlaps, along the smallest penetration axis. Buildings
+// are axis-aligned boxes, so the push is a single axis at a time.
 function resolveCircle(pos, radius, colliders) {
   colliders.forEach((c) => {
     const dx = pos.x - c.x;
@@ -59,6 +72,9 @@ function resolveCircle(pos, radius, colliders) {
     }
   });
 }
+
+// The four colours a fresh spray paint job can pick.
+const SPRAY_COLORS = [0xd23b3b, 0x2a6fd6, 0xf2c230, 0x37b268];
 
 export class Game {
   constructor(canvas) {
@@ -102,9 +118,9 @@ export class Game {
     this.scene.add(this.player.mesh);
 
     // Parked cars the player can steal, including the red Comet at the Marina.
-    this.parkedCars = [];
     // Parked cars sit on road lines (a road coordinate is a multiple of
     // 40), never inside a block, so the player can always walk up to one.
+    this.parkedCars = [];
     const parkedSpots = [
       { x: 80, z: -120, color: 0xd23b3b, angle: 0 },
       { x: -40, z: 60, color: 0x2a6fd6, angle: Math.PI / 2 },
@@ -119,7 +135,7 @@ export class Game {
     });
     this.redCar = this.parkedCars[0];
 
-    // Cash pickups scattered around the city ($25 each, respawn).
+    // Cash pickups scattered around the city ($25 each, respawn after a minute).
     this.cashPickups = [];
     const cashSpots = [
       [0, -80], [-80, -40], [80, 40], [-40, 120], [120, -40],
@@ -135,7 +151,8 @@ export class Game {
       this.cashPickups.push({ mesh, x, z, taken: false, respawn: 0 });
     });
 
-    // The gold mission beacon: a tall translucent pillar at the objective.
+    // The gold mission beacon: a tall translucent pillar at the objective,
+    // with a pulsing ring on the ground beneath it.
     const beaconGeo = new THREE.CylinderGeometry(2.2, 2.2, 34, 12, 1, true);
     this.beacon = new THREE.Mesh(
       beaconGeo,
@@ -174,6 +191,9 @@ export class Game {
   }
 
   // --- State changes -------------------------------------------------
+  // Every state change goes through one of these methods so the menus,
+  // the HUD and the save stay in step with the game state.
+
   startNewGame(silent = false) {
     this.money = 0;
     this.score = 0;
@@ -311,6 +331,9 @@ export class Game {
   }
 
   // --- Cars ----------------------------------------------------------
+  // Stealing a traffic car is a crime; a parked car is free. Police
+  // cars cannot be entered at all.
+
   enterCar(car) {
     if (this.player.car) return;
     if (car.driver === 'traffic') {
@@ -359,8 +382,8 @@ export class Game {
     return best;
   }
 
+  // Punch: knock down the nearest pedestrian in front of the player.
   hitNearby(dist, damage) {
-    // Punch: knock down the nearest pedestrian in front of the player.
     const p = this.player.pos;
     const fx = Math.sin(this.player.angle);
     const fz = Math.cos(this.player.angle);
@@ -378,8 +401,9 @@ export class Game {
     });
   }
 
+  // Shooting: hit the nearest traffic or police car roughly along the
+  // shot line. Shooting at police adds wanted stars.
   shootHit(start, dir) {
-    // Hits the nearest traffic or police car roughly along the shot line.
     let best = null;
     let bestD = 60;
     const targets = [...this.traffic.cars, ...this.police.policeCars];
@@ -395,12 +419,11 @@ export class Game {
       }
     });
     if (best) {
+      best.speed = 0;
       if (best.isPolice) {
-        best.speed = 0;
         this.police.addWanted(1, 'shooting at police');
         this.hud.toast('You shot a police car! ★★');
       } else {
-        best.speed = 0;
         this.hud.toast('You shot out a car.');
       }
     }
@@ -413,6 +436,7 @@ export class Game {
     const dt = Math.min(0.05, (now - this.lastTime) / 1000 || 0.016);
     this.lastTime = now;
     if (this.state === 'menu') {
+      // Slow orbit over the city behind the title screen.
       const t = now * 0.00008;
       this.camera.position.set(Math.sin(t) * 150, 70, Math.cos(t) * 150);
       this.camera.lookAt(0, 0, 0);
@@ -430,6 +454,241 @@ export class Game {
     this.update(dt, now);
     this.renderer.render(this.scene, this.camera);
     this.input.consumeFrame();
+  }
+
+  // --- Autopilot (screenshot staging) --------------------------------
+  // Follow road waypoints toward a target. Waypoints sit on road lines
+  // so the car never has to cut through a building; the driver slows
+  // for sharp turns to stay on the road. Returns the synthetic input
+  // and the steering angle, or nulls when there is no autopilot.
+  updateAutopilot(now) {
+    if (!this.autopilot) return { input: null, angle: null };
+    if (now >= this.autopilot.until) {
+      this.autopilot = null;
+      return { input: null, angle: null };
+    }
+    const wp = this.autopilot.waypoints;
+    while (wp.length > 0 && distance2D(this.player.pos.x, this.player.pos.z, wp[0].x, wp[0].z) < 7) {
+      wp.shift();
+    }
+    if (wp.length === 0) {
+      this.autopilot = null;
+      return { input: null, angle: null };
+    }
+    const target = wp[0];
+    const dx = target.x - this.player.pos.x;
+    const dz = target.z - this.player.pos.z;
+    const wantAngle = Math.atan2(dx, dz);
+    let diff = wantAngle - this.player.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const angle = { wantAngle, diff };
+    const throttle = Math.abs(diff) > 0.7 ? 0.35 : 1;
+    // A positive angle difference needs a left turn, which is negative
+    // steering input in this convention.
+    const input = { moveY: () => throttle, moveX: () => clamp(-diff * 2, -1, 1), isDown: () => false };
+    this.cameraYaw = lerp(this.cameraYaw, this.player.angle + Math.PI, 0.1);
+    return { input, angle };
+  }
+
+  // --- Movement ------------------------------------------------------
+  // Drive the player's car, resolving building collisions and bumps
+  // into traffic and police cars.
+  drivePlayerCar(dt, driveInput, autopilotOn) {
+    const car = this.player.car;
+    car.drive(driveInput, dt);
+    // The screenshot autopilot keeps a modest speed so turns stay clean.
+    if (autopilotOn) car.speed = clamp(car.speed, -8, 20);
+    resolveCircle(car.pos, 1.6, this.city.colliders);
+    this.player.pos.copy(car.pos);
+    this.player.angle = car.angle;
+    [...this.traffic.cars, ...this.police.policeCars].forEach((other) => {
+      if (other === car) return;
+      const d = distance2D(car.pos.x, car.pos.z, other.pos.x, other.pos.z);
+      if (d < 3.4 && d > 0.01) {
+        const push = (3.4 - d) / 2;
+        const nx = (car.pos.x - other.pos.x) / d;
+        const nz = (car.pos.z - other.pos.z) / d;
+        car.pos.x += nx * push;
+        car.pos.z += nz * push;
+        car.speed *= 0.6;
+        if (other.isPolice) {
+          other.speed *= 0.5;
+        } else {
+          other.speed *= 0.5;
+          if (Math.abs(car.speed) > 8 && car.hitCooldown <= 0) {
+            car.hitCooldown = 1;
+            this.audio.crash();
+            this.combat.takeDamage(4);
+          }
+        }
+      }
+    });
+    this.audio.setEngine(car.speed, driveInput.moveY() !== 0);
+    this.hud.setSpeed(car.speed, true);
+  }
+
+  // Walk on foot. The screenshot autopilot walks straight toward its
+  // waypoint instead of using camera-relative controls, so it never
+  // walks into the sea; a human player steers relative to the camera.
+  walkPlayer(dt, autopilotAngle) {
+    const input = this.input;
+    const sprint = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
+    const speed = sprint ? 10 : 6;
+    let vx = 0;
+    let vz = 0;
+    if (autopilotAngle) {
+      this.player.angle += clamp(autopilotAngle.diff, -3 * dt, 3 * dt);
+      vx = Math.sin(this.player.angle) * speed;
+      vz = Math.cos(this.player.angle) * speed;
+      this.player.walkPhase += dt * 9;
+    } else {
+      const mx = input.moveX();
+      const my = input.moveY();
+      const forwardX = Math.sin(this.cameraYaw + Math.PI);
+      const forwardZ = Math.cos(this.cameraYaw + Math.PI);
+      const rightX = Math.sin(this.cameraYaw + Math.PI - Math.PI / 2);
+      const rightZ = Math.cos(this.cameraYaw + Math.PI - Math.PI / 2);
+      vx = forwardX * my + rightX * mx;
+      vz = forwardZ * my + rightZ * mx;
+      const len = Math.sqrt(vx * vx + vz * vz);
+      if (len > 0) {
+        vx = (vx / len) * speed;
+        vz = (vz / len) * speed;
+        this.player.angle = Math.atan2(vx, vz);
+        this.player.walkPhase += dt * (sprint ? 13 : 9);
+      }
+    }
+    this.player.pos.x += vx * dt;
+    this.player.pos.z += vz * dt;
+    this.player.pos.x = clamp(this.player.pos.x, -185, 185);
+    this.player.pos.z = clamp(this.player.pos.z, -185, 200);
+    resolveCircle(this.player.pos, 0.8, this.city.colliders);
+    this.player.mesh.position.copy(this.player.pos);
+    this.player.mesh.position.y = Math.abs(Math.sin(this.player.walkPhase)) * 0.08;
+    this.player.mesh.rotation.y = this.player.angle;
+    this.audio.setEngine(0, false);
+    this.hud.setSpeed(0, false);
+  }
+
+  // Spray Shop: drive in with wanted stars and $75 to go clean. The
+  // car gets a fresh random paint job as part of the deal.
+  handleSprayShop() {
+    const spray = this.city.markers.spray;
+    if (!this.player.car || this.police.wanted <= 0) return;
+    if (distance2D(this.player.pos.x, this.player.pos.z, spray.x, spray.z) >= 9) return;
+    if (this.money < SIDE_JOBS.sprayCost) {
+      this.hud.toast('Spray Shop needs $75 — you are short.');
+      return;
+    }
+    this.money -= SIDE_JOBS.sprayCost;
+    this.police.clearWanted();
+    this.hud.setMoney(this.money);
+    this.hud.setWanted(0);
+    this.hud.toast('Spray Shop: new paint, clean record. -$75');
+    this.audio.coin();
+    this.player.car.mesh.children[0].material = new THREE.MeshStandardMaterial({
+      color: SPRAY_COLORS[Math.floor(Math.random() * SPRAY_COLORS.length)],
+      roughness: 0.35,
+      metalness: 0.5,
+    });
+  }
+
+  // Cash pickups: spin, bob, pay $25 on touch, then respawn after 60 s.
+  collectPickups(dt, now) {
+    this.cashPickups.forEach((pk) => {
+      if (pk.taken) {
+        pk.respawn -= dt;
+        if (pk.respawn <= 0) {
+          pk.taken = false;
+          pk.mesh.visible = true;
+        }
+        return;
+      }
+      pk.mesh.rotation.y += dt * 2;
+      pk.mesh.position.y = 1.2 + Math.sin(now * 0.003 + pk.x) * 0.25;
+      if (distance2D(this.player.pos.x, this.player.pos.z, pk.x, pk.z) < 2.6) {
+        pk.taken = true;
+        pk.respawn = 60;
+        pk.mesh.visible = false;
+        this.addMoney(SIDE_JOBS.cashPickup);
+        this.audio.coin();
+        this.hud.toast(`Cash pickup +$${SIDE_JOBS.cashPickup}`);
+      }
+    });
+  }
+
+  // Run the world systems for one frame and return the nearest police
+  // car's distance (for the siren volume).
+  runSystems(dt, playerSpeed) {
+    this.traffic.update(dt, this.player.car, this.police.policeCars);
+    this.pedestrians.update(dt, this.player.pos, playerSpeed, (reason) => {
+      this.police.addWanted(1, reason);
+      this.hud.toast('You hit a pedestrian! ★');
+      this.audio.crash();
+    });
+    const nearestPolice = this.police.update(
+      dt,
+      this.player,
+      this.player.car,
+      () => this.busted(),
+      () => {
+        this.combat.takeDamage(6);
+        this.audio.crash();
+      },
+    );
+    // Police cars must not clip through buildings either.
+    this.police.policeCars.forEach((car) => resolveCircle(car.pos, 1.6, this.city.colliders));
+    this.missions.update(dt);
+    this.missions.updateTaxi(dt);
+    this.combat.update(dt, this.input, this.player.pos, this.player.angle, this.camera);
+    this.combat.heal(dt * 0.8);
+    return nearestPolice;
+  }
+
+  // The gold beacon pillar follows the current objective marker.
+  updateBeacon(now) {
+    if (!this.hud.marker) {
+      this.beacon.visible = false;
+      this.beaconRing.visible = false;
+      return;
+    }
+    this.beacon.visible = true;
+    this.beaconRing.visible = true;
+    this.beacon.position.set(this.hud.marker.x, 17, this.hud.marker.z);
+    this.beaconRing.position.set(this.hud.marker.x, 0.3, this.hud.marker.z);
+    this.beaconRing.scale.setScalar(1 + Math.sin(now * 0.004) * 0.15);
+  }
+
+  // Third-person chase camera: behind the player, higher and further
+  // back while driving.
+  updateCamera(dt) {
+    const camDist = this.player.car ? 13 : 9;
+    const camHeight = this.player.car ? 5.5 : 3.8;
+    const backX = Math.sin(this.cameraYaw);
+    const backZ = Math.cos(this.cameraYaw);
+    const targetPos = new THREE.Vector3(
+      this.player.pos.x + backX * camDist,
+      camHeight,
+      this.player.pos.z + backZ * camDist,
+    );
+    this.camera.position.lerp(targetPos, 1 - Math.pow(0.001, dt));
+    this.camera.lookAt(this.player.pos.x, this.player.car ? 1.6 : 1.4, this.player.pos.z);
+  }
+
+  // HUD, siren and ambient animation, plus the 30-second autosave.
+  updateHudAndAudio(dt, now, nearestPolice) {
+    this.hud.setHealth(this.combat.health);
+    this.hud.setWanted(this.police.wanted);
+    this.hud.drawMinimap(this);
+    this.audio.setSiren(this.police.wanted > 0, nearestPolice);
+    this.city.water.position.y = 0.02 + Math.sin(now * 0.0006) * 0.05;
+    this.city.lighthouseTop.rotation.y += dt * 0.8;
+    this.saveTimer += dt;
+    if (this.saveTimer > 30) {
+      this.saveTimer = 0;
+      this.saveGame();
+    }
   }
 
   update(dt, now) {
@@ -452,37 +711,8 @@ export class Game {
     this.cameraYaw -= input.mouseDX * 0.004;
     this.cameraPitch = clamp(this.cameraPitch + input.mouseDY * 0.003, 0.08, 0.9);
 
-    // Autopilot (screenshot staging): follow road waypoints toward a target.
-    // Waypoints sit on road lines so the car never has to cut through a
-    // building; the driver slows for sharp turns to stay on the road.
-    let autopilotInput = null;
-    let autopilotAngle = null;
-    if (this.autopilot && now < this.autopilot.until) {
-      const wp = this.autopilot.waypoints;
-      while (wp.length > 0 && distance2D(this.player.pos.x, this.player.pos.z, wp[0].x, wp[0].z) < 7) {
-        wp.shift();
-      }
-      if (wp.length === 0) {
-        this.autopilot = null;
-      } else {
-        const target = wp[0];
-        const dx = target.x - this.player.pos.x;
-        const dz = target.z - this.player.pos.z;
-        const wantAngle = Math.atan2(dx, dz);
-        let diff = wantAngle - this.player.angle;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        autopilotAngle = { wantAngle, diff };
-        const throttle = Math.abs(diff) > 0.7 ? 0.35 : 1;
-        // A positive angle difference needs a left turn, which is negative
-        // steering input in this convention.
-        autopilotInput = { moveY: () => throttle, moveX: () => clamp(-diff * 2, -1, 1), isDown: () => false };
-        this.cameraYaw = lerp(this.cameraYaw, this.player.angle + Math.PI, 0.1);
-      }
-    } else if (this.autopilot) {
-      this.autopilot = null;
-    }
-    const driveInput = autopilotInput || input;
+    const autopilot = this.updateAutopilot(now);
+    const driveInput = autopilot.input || input;
 
     // Enter / exit cars.
     if (input.wasPressed('KeyE')) {
@@ -495,187 +725,19 @@ export class Game {
     // Taxi side job.
     if (input.wasPressed('KeyT')) this.missions.tryTaxi();
 
-    // --- Movement ----------------------------------------------------
+    // Movement, on wheels or on foot.
     const playerSpeed = this.player.car ? Math.abs(this.player.car.speed) : 0;
     if (this.player.car) {
-      const car = this.player.car;
-      car.drive(driveInput, dt);
-      // The screenshot autopilot keeps a modest speed so turns stay clean.
-      if (autopilotInput) car.speed = clamp(car.speed, -8, 20);
-      resolveCircle(car.pos, 1.6, this.city.colliders);
-      this.player.pos.copy(car.pos);
-      this.player.angle = car.angle;
-      // Bump into traffic cars.
-      [...this.traffic.cars, ...this.police.policeCars].forEach((other) => {
-        if (other === car) return;
-        const d = distance2D(car.pos.x, car.pos.z, other.pos.x, other.pos.z);
-        if (d < 3.4 && d > 0.01) {
-          const push = (3.4 - d) / 2;
-          const nx = (car.pos.x - other.pos.x) / d;
-          const nz = (car.pos.z - other.pos.z) / d;
-          car.pos.x += nx * push;
-          car.pos.z += nz * push;
-          car.speed *= 0.6;
-          if (other.isPolice) {
-            other.speed *= 0.5;
-          } else {
-            other.speed *= 0.5;
-            if (Math.abs(car.speed) > 8 && car.hitCooldown <= 0) {
-              car.hitCooldown = 1;
-              this.audio.crash();
-              this.combat.takeDamage(4);
-            }
-          }
-        }
-      });
-      this.audio.setEngine(car.speed, driveInput.moveY() !== 0);
-      this.hud.setSpeed(car.speed, true);
+      this.drivePlayerCar(dt, driveInput, Boolean(autopilot.input));
     } else {
-      const sprint = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
-      const speed = sprint ? 10 : 6;
-      // The screenshot autopilot walks straight toward its waypoint instead
-      // of using camera-relative controls, so it never walks into the sea.
-      let vx = 0;
-      let vz = 0;
-      if (autopilotAngle) {
-        this.player.angle += clamp(autopilotAngle.diff, -3 * dt, 3 * dt);
-        vx = Math.sin(this.player.angle) * speed;
-        vz = Math.cos(this.player.angle) * speed;
-        this.player.walkPhase += dt * 9;
-      } else {
-        const mx = input.moveX();
-        const my = input.moveY();
-        // Movement is relative to the camera yaw.
-        const forwardX = Math.sin(this.cameraYaw + Math.PI);
-        const forwardZ = Math.cos(this.cameraYaw + Math.PI);
-        const rightX = Math.sin(this.cameraYaw + Math.PI - Math.PI / 2);
-        const rightZ = Math.cos(this.cameraYaw + Math.PI - Math.PI / 2);
-        vx = forwardX * my + rightX * mx;
-        vz = forwardZ * my + rightZ * mx;
-        const len = Math.sqrt(vx * vx + vz * vz);
-        if (len > 0) {
-          vx = (vx / len) * speed;
-          vz = (vz / len) * speed;
-          this.player.angle = Math.atan2(vx, vz);
-          this.player.walkPhase += dt * (sprint ? 13 : 9);
-        }
-      }
-      this.player.pos.x += vx * dt;
-      this.player.pos.z += vz * dt;
-      this.player.pos.x = clamp(this.player.pos.x, -185, 185);
-      this.player.pos.z = clamp(this.player.pos.z, -185, 200);
-      resolveCircle(this.player.pos, 0.8, this.city.colliders);
-      this.player.mesh.position.copy(this.player.pos);
-      this.player.mesh.position.y = Math.abs(Math.sin(this.player.walkPhase)) * 0.08;
-      this.player.mesh.rotation.y = this.player.angle;
-      this.audio.setEngine(0, false);
-      this.hud.setSpeed(0, false);
+      this.walkPlayer(dt, autopilot.angle);
     }
 
-    // Spray Shop: drive in with wanted stars and $75 to go clean.
-    const spray = this.city.markers.spray;
-    if (this.player.car && this.police.wanted > 0 && distance2D(this.player.pos.x, this.player.pos.z, spray.x, spray.z) < 9) {
-      if (this.money >= SIDE_JOBS.sprayCost) {
-        this.money -= SIDE_JOBS.sprayCost;
-        this.police.clearWanted();
-        this.hud.setMoney(this.money);
-        this.hud.setWanted(0);
-        this.hud.toast('Spray Shop: new paint, clean record. -$75');
-        this.audio.coin();
-        this.player.car.mesh.children[0].material = new THREE.MeshStandardMaterial({
-          color: [0xd23b3b, 0x2a6fd6, 0xf2c230, 0x37b268][Math.floor(Math.random() * 4)],
-          roughness: 0.35,
-          metalness: 0.5,
-        });
-      } else {
-        this.hud.toast('Spray Shop needs $75 — you are short.');
-      }
-    }
-
-    // Cash pickups.
-    this.cashPickups.forEach((pk) => {
-      if (pk.taken) {
-        pk.respawn -= dt;
-        if (pk.respawn <= 0) {
-          pk.taken = false;
-          pk.mesh.visible = true;
-        }
-        return;
-      }
-      pk.mesh.rotation.y += dt * 2;
-      pk.mesh.position.y = 1.2 + Math.sin(now * 0.003 + pk.x) * 0.25;
-      if (distance2D(this.player.pos.x, this.player.pos.z, pk.x, pk.z) < 2.6) {
-        pk.taken = true;
-        pk.respawn = 60;
-        pk.mesh.visible = false;
-        this.addMoney(SIDE_JOBS.cashPickup);
-        this.audio.coin();
-        this.hud.toast(`Cash pickup +$${SIDE_JOBS.cashPickup}`);
-      }
-    });
-
-    // Systems.
-    this.traffic.update(dt, this.player.car, this.police.policeCars);
-    this.pedestrians.update(dt, this.player.pos, playerSpeed, (reason) => {
-      this.police.addWanted(1, reason);
-      this.hud.toast('You hit a pedestrian! ★');
-      this.audio.crash();
-    });
-    const nearestPolice = this.police.update(
-      dt,
-      this.player,
-      this.player.car,
-      () => this.busted(),
-      () => {
-        this.combat.takeDamage(6);
-        this.audio.crash();
-      },
-    );
-    // Police cars must not clip through buildings either.
-    this.police.policeCars.forEach((car) => resolveCircle(car.pos, 1.6, this.city.colliders));
-    this.missions.update(dt);
-    this.missions.updateTaxi(dt);
-    this.combat.update(dt, input, this.player.pos, this.player.angle, this.camera);
-    this.combat.heal(dt * 0.8);
-
-    // Mission beacon follows the current objective marker.
-    if (this.hud.marker) {
-      this.beacon.visible = true;
-      this.beaconRing.visible = true;
-      this.beacon.position.set(this.hud.marker.x, 17, this.hud.marker.z);
-      this.beaconRing.position.set(this.hud.marker.x, 0.3, this.hud.marker.z);
-      this.beaconRing.scale.setScalar(1 + Math.sin(now * 0.004) * 0.15);
-    } else {
-      this.beacon.visible = false;
-      this.beaconRing.visible = false;
-    }
-
-    // Camera: third-person chase behind the player.
-    const camDist = this.player.car ? 13 : 9;
-    const camHeight = this.player.car ? 5.5 : 3.8;
-    const backX = Math.sin(this.cameraYaw);
-    const backZ = Math.cos(this.cameraYaw);
-    const targetPos = new THREE.Vector3(
-      this.player.pos.x + backX * camDist,
-      camHeight,
-      this.player.pos.z + backZ * camDist,
-    );
-    this.camera.position.lerp(targetPos, 1 - Math.pow(0.001, dt));
-    this.camera.lookAt(this.player.pos.x, this.player.car ? 1.6 : 1.4, this.player.pos.z);
-
-    // HUD + audio.
-    this.hud.setHealth(this.combat.health);
-    this.hud.setWanted(this.police.wanted);
-    this.hud.drawMinimap(this);
-    this.audio.setSiren(this.police.wanted > 0, nearestPolice);
-    this.city.water.position.y = 0.02 + Math.sin(now * 0.0006) * 0.05;
-    this.city.lighthouseTop.rotation.y += dt * 0.8;
-
-    // Autosave every 30 seconds.
-    this.saveTimer += dt;
-    if (this.saveTimer > 30) {
-      this.saveTimer = 0;
-      this.saveGame();
-    }
+    this.handleSprayShop();
+    this.collectPickups(dt, now);
+    const nearestPolice = this.runSystems(dt, playerSpeed);
+    this.updateBeacon(now);
+    this.updateCamera(dt);
+    this.updateHudAndAudio(dt, now, nearestPolice);
   }
 }
