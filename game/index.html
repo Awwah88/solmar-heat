@@ -1,72 +1,50 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solmar Heat — an open-world crime game</title>
-<meta name="description" content="Solmar Heat: a 3D open-world crime game in Solmar Bay. Steal cars, lose the heat, pay the Marlin Club. Built for make.fun's Make GTA 6 bounty.">
+<title>Solmar Heat — a 3D open-world crime game</title>
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    overflow: hidden;
-    background: #0d1b26;
-    font-family: 'Segoe UI', Arial, sans-serif;
-  }
-  #gl { position: fixed; inset: 0; display: block; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  #loading {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    color: #fff;
-    background: #0d1b26;
-    z-index: 5;
-    pointer-events: none;
-  }
-  #loading h1 {
-    margin: 0;
-    font-size: 44px;
-    letter-spacing: 3px;
-    color: #ff7a3c;
-    text-shadow: 3px 3px 0 #7a1e00;
-  }
-  #loading p { margin: 8px 0 0; color: #e8c832; font-size: 16px; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0a0e14; font-family: Arial, Helvetica, sans-serif; }
+  canvas { display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  .hud-top { position: absolute; top: 14px; left: 16px; right: 16px; display: flex; gap: 18px; align-items: center; }
+  .hud-money { font-size: 30px; font-weight: bold; color: #7dff9e; }
+  .hud-health { display: flex; align-items: center; gap: 6px; font-size: 20px; color: #ff6b6b; }
+  .health-bar { width: 130px; height: 12px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); border-radius: 6px; overflow: hidden; }
+  #healthFill { height: 100%; width: 100%; background: #37c978; }
+  .hud-wanted { margin-left: auto; font-size: 26px; letter-spacing: 3px; color: #ffd23f; }
+  .hud-objective { position: absolute; top: 64px; left: 16px; max-width: 430px; background: rgba(8,12,18,.62); padding: 10px 14px; border-left: 4px solid #ffd23f; border-radius: 4px; }
+  #objectiveTitle { font-size: 17px; font-weight: bold; color: #ffd23f; }
+  #objectiveText { font-size: 14px; margin-top: 3px; color: #eef2f5; }
+  .hud-speed { position: absolute; right: 18px; bottom: 18px; font-size: 26px; font-weight: bold; color: #fff; }
+  .hud-map { position: absolute; left: 16px; bottom: 16px; border: 2px solid rgba(255,255,255,.65); border-radius: 6px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+  #minimap { display: block; width: 200px; height: 200px; }
+  .hud-hint { position: absolute; bottom: 18px; left: 232px; font-size: 13px; color: rgba(255,255,255,.85); }
+  .hud-toast { position: absolute; top: 150px; left: 50%; transform: translateX(-50%); background: rgba(8,12,18,.85); border: 1px solid #ffd23f; color: #ffe9a8; font-size: 16px; padding: 10px 18px; border-radius: 6px; opacity: 0; transition: opacity .25s; white-space: nowrap; }
+  .hud-toast.show { opacity: 1; }
+  .screen { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: linear-gradient(180deg, rgba(6,12,20,.82), rgba(20,8,20,.78)); color: #fff; text-align: center; padding: 20px; }
+  .screen.hidden { display: none; }
+  .game-title { font-size: 72px; font-weight: 900; letter-spacing: 6px; color: #ffd23f; text-shadow: 0 0 24px rgba(255,150,40,.55), 0 3px 0 #b3541e; }
+  .game-sub { font-size: 20px; color: #dfe8ef; }
+  .game-story { max-width: 620px; font-size: 16px; line-height: 1.5; color: #f2e6c9; }
+  .game-controls { font-size: 13px; color: #b9c4cd; max-width: 640px; }
+  .game-credit { font-size: 12px; color: #8fa0ac; }
+  .screen-title { font-size: 64px; font-weight: 900; letter-spacing: 5px; color: #fff; }
+  .screen-title.gold { color: #ffd23f; }
+  .screen-title.blue { color: #5aa9ff; }
+  .screen-title.red { color: #ff5a5a; }
+  .screen-sub, #winText { font-size: 17px; color: #e8eef2; max-width: 560px; line-height: 1.5; }
+  .big-btn { pointer-events: auto; cursor: pointer; font-size: 19px; font-weight: bold; letter-spacing: 1px; color: #1a1206; background: #ffd23f; border: none; border-radius: 8px; padding: 14px 34px; box-shadow: 0 4px 0 #b3541e; }
+  .big-btn:hover { background: #ffe06a; }
+  .big-btn.ghost { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,.7); box-shadow: none; }
+  .big-btn.ghost:hover { background: rgba(255,255,255,.14); }
 </style>
 <script type="importmap">
-{
-  "imports": {
-    "three": "./vendor/three.module.min.js"
-  }
-}
+{ "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="loading">
-  <h1>SOLMAR HEAT</h1>
-  <p>Loading Solmar Bay…</p>
-</div>
-<p id="status" role="status" aria-live="polite">Solmar Heat is loading.</p>
-<script type="module">
-  // Hide the loading screen once the game module has run; the game
-  // itself appends its canvas and HUD on top of this page.
-  import './src/main.js';
-  const loading = document.getElementById('loading');
-  if (loading) loading.style.display = 'none';
-  const status = document.getElementById('status');
-  if (status) status.textContent = 'Solmar Heat loaded. Press Start Story to play.';
-</script>
+<script type="module" src="./src/main.js"></script>
 </body>
 </html>
