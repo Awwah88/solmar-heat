@@ -1,65 +1,52 @@
-// Solmar Heat — a tiny static file server for local play and screenshots.
-// Serves the repository root: `/` is game/index.html, and any path that is not
-// found at the root is tried under game/ (so the page works whether it is
-// served from the repo root or from game/ itself). No build step, no network.
-
+// Solmar Heat — dev server. Serves the static game/ folder on a local
+// port so the game can be played and screenshotted in a browser.
+// Usage: node serve.ts [--port 8080]
 import { createServer } from 'node:http';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.png': 'image/png',
+const here = fileURLToPath(new URL('.', import.meta.url));
+const root = join(here, 'game');
+
+const args = process.argv.slice(2);
+let port = 8080;
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--port' && args[i + 1]) port = parseInt(args[i + 1], 10);
+}
+
+const types = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.json': 'application/json',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.css': 'text/css',
 };
 
-function portFromArgs() {
-  const args = process.argv.slice(2);
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--port' && args[i + 1]) return Number(args[i + 1]);
-    if (a.startsWith('--port=')) return Number(a.slice('--port='.length));
-  }
-  return 8080;
-}
-
-const ROOT = process.cwd();
-const PORT = portFromArgs();
-
-function resolvePath(urlPath) {
-  const clean = decodeURIComponent(urlPath.split('?')[0].split('#')[0]);
-  if (clean === '/' || clean === '') return join(ROOT, 'game', 'index.html');
-  const direct = join(ROOT, clean);
-  if (existsSync(direct) && statSync(direct).isFile()) return direct;
-  const underGame = join(ROOT, 'game', clean);
-  if (existsSync(underGame) && statSync(underGame).isFile()) return underGame;
-  return null;
-}
-
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   try {
-    const file = resolvePath(req.url || '/');
-    if (!file || extname(file) === '.ts') {
-      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-      res.end('not found\n');
+    const url = new URL(req.url, 'http://localhost');
+    let path = decodeURIComponent(url.pathname);
+    if (path === '/' || path === '') path = '/index.html';
+    const file = join(root, path);
+    if (!file.startsWith(root) || !existsSync(file)) {
+      res.writeHead(404, { 'content-type': 'text/plain' });
+      res.end('not found');
       return;
     }
-    const body = readFileSync(file);
-    const type = MIME[extname(file).toLowerCase()] || 'application/octet-stream';
-    res.writeHead(200, { 'content-type': type, 'content-length': body.length });
+    const body = await readFile(file);
+    res.writeHead(200, { 'content-type': types[extname(file)] || 'application/octet-stream' });
     res.end(body);
-  } catch {
-    res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('server error\n');
+  } catch (e) {
+    res.writeHead(500, { 'content-type': 'text/plain' });
+    res.end('server error');
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`Solmar Heat serving ${ROOT} on http://localhost:${PORT}/`);
+server.listen(port, () => {
+  console.log(`Solmar Heat at http://localhost:${port}/`);
 });
