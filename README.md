@@ -6,57 +6,62 @@
 
 Built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC
 
-**Solmar Heat** is a 3D open-world crime game in the fictional coastal city of Solmar Bay, built with Three.js (vendored) and plain static files — no build step, no network requests, playable offline in desktop Chrome.
-
-## The story
-
-Dana "Dash" Reyes owes the Marlin Club **$400**. One sunset, three jobs, and the whole bay is watching.
-
-- **Mission 1 — Hot Wheels:** steal a car and take it to the Marina Garage. **+$150**
-- **Mission 2 — Sunset Courier:** deliver three packages — the Pier, Hotel Solmar, the Old Lighthouse — before the 240-second clock runs out. Earns a pistol. **+$250**
-- **Mission 3 — The Heat:** three stars and every cop in the bay is after you. Lose the heat, then vanish to the Safehouse. **+$400**
-
-Finish all three and the win screen names you a **Solmar Legend** — $775 in total — then free roam unlocks.
+**Solmar Heat** is a 3D open-world crime game set in the sun-soaked fictional city of Solmar Bay. Dana "Dash" Reyes owes the Marlin Club $400 — steal cars, outrun the law, run packages at sunset, and pay the debt before the city eats you alive.
 
 ## The world
 
-- A 9×9-block city: roads, traffic, 24 pedestrians, a beach, the sea, palms, lamps, and six landmarks — Marina Garage, Hotel Solmar, Old Lighthouse, Spray Shop, Safehouse, and The Pier.
-- **Wanted 0–5 stars:** stealing cars and hitting people raises the heat; police cars chase, ram, and will bust you on foot. The Spray Shop clears your record for $75.
-- **Driving and on-foot play:** steal any parked car or the taxi, drive with arcade physics, or walk the sidewalks.
-- **Combat:** fists from the start, pistol after Mission 2. Health regrows once you are safe.
-- **Side work:** drive the taxi for $40 a fare; grab cash pickups ($25) and golden shells ($15) on the beach.
-- **HUD:** money, health, wanted stars, mission objective with countdown, speed, and a live minimap with police, traffic, and markers.
-- **Save:** autosaves to localStorage; CONTINUE on the start screen picks up where you left off.
-- **Sound:** fully synthesized WebAudio — engine hum, sirens, a sunset-synth bass loop, and effects. No audio files. `M` mutes.
+A 9×9-block coastal city: roads full of traffic, sidewalks full of pedestrians, a sand beach and the open sea to the south, and six landmarks — Marina Garage, Hotel Solmar, the Old Lighthouse, the Spray Shop, the Safehouse and The Pier. Sunset lighting, drifting clouds and glowing windows give the city its golden-hour look.
 
-## Controls
+## What you can do
+
+- **Explore on foot and by car** — walk the streets or steal any car you find (the law notices).
+- **Wanted level 0–5 stars** — police cruisers chase, ram and corner you. Get Busted if they catch you slow, or Wasted if your health runs out. The Spray Shop clears your wanted level for $75.
+- **Four story missions** — Hot Wheels, Sunset Courier (with a 240-second clock and a pistol reward), The Heat, and the finale, Marlin's Debt: steal the boss's gold Marlin GT and deliver it to the Old Lighthouse with a 4-star wanted level.
+- **Side work** — taxi fares, a vigilante bonus for ramming the black getaway car, and ten collectible shells hidden off the driving line.
+- **Combat** — fists on foot, and the pistol from Mission 2, with muzzle flash and sound.
+- **Systems** — health, money and score, a HUD with a live minimap and mission tracker, a start screen, and localStorage saves with autosave.
+
+## How to play
+
+Serve the folder and open `game/index.html` in a desktop browser:
+
+```sh
+node serve.ts --port 8080
+```
+
+Then open http://localhost:8080/ and press **New Game**.
 
 | Key | Action |
 | --- | --- |
-| W A S D / arrows | Drive / walk (Shift to run) |
-| E | Get in / out of a car |
-| Space | Handbrake |
-| F | Punch, or shoot once you own the pistol |
-| M | Mute |
-| Esc | Pause |
+| W A S D | Drive / walk |
+| E | Enter or steal a car, pick up a taxi passenger |
+| Space | Brake / handbrake |
+| Shift | Sprint |
+| F | Punch |
+| Mouse click | Shoot (once you own the pistol) |
 
-## Play it
+## Tech
 
-```bash
-node serve.ts
-# open http://localhost:8080
-```
+- Three.js r180, vendored under `game/vendor/` — no network requests, everything runs from static files.
+- All sound is synthesized with WebAudio; all art is procedural (no borrowed assets).
+- The game is original: its city, characters, vehicles, names and story are its own.
 
-## Build
+## Files
 
-`main.ts` (Node 22, standard library only) copies `game/` and `screenshots/` to the output directory and writes `dossier.json` with the vendored make.fun library:
-
-```bash
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-```
-
-Screenshots are real renders of the game in a browser: a three-star chase, the city on foot, the courier run, and the title menu.
-
-## Credits
-
-All names, places, characters, art, story, and sounds are original. No assets from any commercial game. License: MIT.
+- `game/index.html` — the page, HUD and menus
+- `game/src/main.js` — boot, game loop and the player
+- `game/src/world.js` — terrain, roads, beach, sea, sky and light
+- `game/src/city.js` — buildings, landmarks, palms and lamps
+- `game/src/vehicles.js` — cars, driving physics and traffic
+- `game/src/pedestrians.js` — the crowd
+- `game/src/police.js` — wanted stars, cruisers, Busted
+- `game/src/combat.js` — fists and the pistol
+- `game/src/missions.js` — the four missions, taxi, vigilante, shells
+- `game/src/hud.js` — HUD, minimap, toasts and screens
+- `game/src/input.js` — keyboard and mouse
+- `game/src/audio.js` — synthesized sound
+- `game/src/save.js` — localStorage saves
+- `game/src/shots.js` — staged screenshot scenes
+- `game/src/config.js` — tuning, layout and story data
+- `main.ts` — builds the submission dossier
+- `serve.ts` — static file server for local play

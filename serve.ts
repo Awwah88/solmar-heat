@@ -1,75 +1,65 @@
-// Solmar Heat — a tiny static server for game/ (Node 22, standard
-// library only), so the entry plays locally without a build step:
-// `node serve.ts` serves game/ on http://localhost:8080 (or --port N).
-// It sends the MIME types a browser game needs, refuses any path outside
-// game/, and otherwise does nothing clever: a development convenience,
-// not a web server for the internet.
+// Solmar Heat — a tiny static file server for local play and screenshots.
+// Serves the repository root: `/` is game/index.html, and any path that is not
+// found at the root is tried under game/ (so the page works whether it is
+// served from the repo root or from game/ itself). No build step, no network.
 
-import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
-const args = process.argv.slice(2);
-const portIndex = args.indexOf('--port');
-const requested = portIndex === -1 ? 8080 : Number(args[portIndex + 1]);
-const port = Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : 8080;
+import { readFileSync, existsSync, statSync } from 'node:fs';
+import { join, extname } from 'node:path';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.glb': 'model/gltf-binary',
-  '.gltf': 'model/gltf+json',
-  '.bin': 'application/octet-stream',
-  '.wasm': 'application/wasm',
-  '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg',
-  '.txt': 'text/plain; charset=utf-8',
 };
 
-createServer((request, response) => {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  let pathname;
+function portFromArgs() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--port' && args[i + 1]) return Number(args[i + 1]);
+    if (a.startsWith('--port=')) return Number(a.slice('--port='.length));
+  }
+  return 8080;
+}
+
+const ROOT = process.cwd();
+const PORT = portFromArgs();
+
+function resolvePath(urlPath) {
+  const clean = decodeURIComponent(urlPath.split('?')[0].split('#')[0]);
+  if (clean === '/' || clean === '') return join(ROOT, 'game', 'index.html');
+  const direct = join(ROOT, clean);
+  if (existsSync(direct) && statSync(direct).isFile()) return direct;
+  const underGame = join(ROOT, 'game', clean);
+  if (existsSync(underGame) && statSync(underGame).isFile()) return underGame;
+  return null;
+}
+
+const server = createServer((req, res) => {
   try {
-    pathname = decodeURIComponent(url.pathname);
+    const file = resolvePath(req.url || '/');
+    if (!file || extname(file) === '.ts') {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('not found\n');
+      return;
+    }
+    const body = readFileSync(file);
+    const type = MIME[extname(file).toLowerCase()] || 'application/octet-stream';
+    res.writeHead(200, { 'content-type': type, 'content-length': body.length });
+    res.end(body);
   } catch {
-    response.writeHead(400).end('bad request');
-    return;
+    res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('server error\n');
   }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolve(join(root, normalize(pathname)));
-  if (file !== root && !file.startsWith(root + sep)) {
-    response.writeHead(403).end('forbidden');
-    return;
-  }
-  let size;
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
-  } catch {
-    response.writeHead(404).end('not found');
-    return;
-  }
-  response.writeHead(200, {
-    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
-    'cache-control': 'no-store',
-  });
-  createReadStream(file).pipe(response);
-}).listen(port, '127.0.0.1', () => {
-  console.log(`Solmar Heat is on http://localhost:${port}`);
+});
+
+server.listen(PORT, () => {
+  console.log(`Solmar Heat serving ${ROOT} on http://localhost:${PORT}/`);
 });
