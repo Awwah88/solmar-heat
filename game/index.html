@@ -3,48 +3,91 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solmar Heat — a 3D open-world crime game</title>
+<title>Solmar Heat — an open-world crime game</title>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0a0e14; font-family: Arial, Helvetica, sans-serif; }
-  canvas { display: block; }
-  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
-  .hud-top { position: absolute; top: 14px; left: 16px; right: 16px; display: flex; gap: 18px; align-items: center; }
-  .hud-money { font-size: 30px; font-weight: bold; color: #7dff9e; }
-  .hud-health { display: flex; align-items: center; gap: 6px; font-size: 20px; color: #ff6b6b; }
-  .health-bar { width: 130px; height: 12px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); border-radius: 6px; overflow: hidden; }
-  #healthFill { height: 100%; width: 100%; background: #37c978; }
-  .hud-wanted { margin-left: auto; font-size: 26px; letter-spacing: 3px; color: #ffd23f; }
-  .hud-objective { position: absolute; top: 64px; left: 16px; max-width: 430px; background: rgba(8,12,18,.62); padding: 10px 14px; border-left: 4px solid #ffd23f; border-radius: 4px; }
-  #objectiveTitle { font-size: 17px; font-weight: bold; color: #ffd23f; }
-  #objectiveText { font-size: 14px; margin-top: 3px; color: #eef2f5; }
-  .hud-speed { position: absolute; right: 18px; bottom: 18px; font-size: 26px; font-weight: bold; color: #fff; }
-  .hud-map { position: absolute; left: 16px; bottom: 16px; border: 2px solid rgba(255,255,255,.65); border-radius: 6px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.5); }
-  #minimap { display: block; width: 200px; height: 200px; }
-  .hud-hint { position: absolute; bottom: 18px; left: 232px; font-size: 13px; color: rgba(255,255,255,.85); }
-  .hud-toast { position: absolute; top: 150px; left: 50%; transform: translateX(-50%); background: rgba(8,12,18,.85); border: 1px solid #ffd23f; color: #ffe9a8; font-size: 16px; padding: 10px 18px; border-radius: 6px; opacity: 0; transition: opacity .25s; white-space: nowrap; }
-  .hud-toast.show { opacity: 1; }
-  .screen { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: linear-gradient(180deg, rgba(6,12,20,.82), rgba(20,8,20,.78)); color: #fff; text-align: center; padding: 20px; }
-  .screen.hidden { display: none; }
-  .game-title { font-size: 72px; font-weight: 900; letter-spacing: 6px; color: #ffd23f; text-shadow: 0 0 24px rgba(255,150,40,.55), 0 3px 0 #b3541e; }
-  .game-sub { font-size: 20px; color: #dfe8ef; }
-  .game-story { max-width: 620px; font-size: 16px; line-height: 1.5; color: #f2e6c9; }
-  .game-controls { font-size: 13px; color: #b9c4cd; max-width: 640px; }
-  .game-credit { font-size: 12px; color: #8fa0ac; }
-  .screen-title { font-size: 64px; font-weight: 900; letter-spacing: 5px; color: #fff; }
-  .screen-title.gold { color: #ffd23f; }
-  .screen-title.blue { color: #5aa9ff; }
-  .screen-title.red { color: #ff5a5a; }
-  .screen-sub, #winText { font-size: 17px; color: #e8eef2; max-width: 560px; line-height: 1.5; }
-  .big-btn { pointer-events: auto; cursor: pointer; font-size: 19px; font-weight: bold; letter-spacing: 1px; color: #1a1206; background: #ffd23f; border: none; border-radius: 8px; padding: 14px 34px; box-shadow: 0 4px 0 #b3541e; }
-  .big-btn:hover { background: #ffe06a; }
-  .big-btn.ghost { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,.7); box-shadow: none; }
-  .big-btn.ghost:hover { background: rgba(255,255,255,.14); }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #1a1a1a; font-family: 'Segoe UI', Arial, sans-serif; }
+  #game { position: fixed; inset: 0; }
+  #game canvas { display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; z-index: 5; }
+  .panel { background: rgba(10, 14, 20, 0.72); border-radius: 8px; padding: 8px 12px; }
+  #stats { position: absolute; top: 12px; left: 12px; min-width: 190px; }
+  #money { font-size: 26px; font-weight: 800; color: #7dff8a; }
+  #health-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  #health-bar { flex: 1; height: 10px; background: #333; border-radius: 5px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff5a4a, #ffb84a); }
+  #health-text { font-size: 13px; min-width: 26px; text-align: right; }
+  #stars { font-size: 20px; letter-spacing: 3px; margin-top: 4px; color: #888; }
+  #minimap { position: absolute; top: 12px; right: 12px; border: 2px solid rgba(255,255,255,0.35); border-radius: 8px; background: rgba(10,14,20,0.7); }
+  #objective-box { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); max-width: 520px; text-align: center; display: none; }
+  #objective { font-size: 16px; font-weight: 700; color: #ffd23e; }
+  #toasts { position: absolute; top: 110px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .toast { background: rgba(10, 14, 20, 0.85); border-left: 4px solid #ffd23e; border-radius: 6px; padding: 8px 14px; text-align: center; }
+  .toast-title { font-weight: 800; font-size: 15px; }
+  .toast-body { font-size: 13px; color: #ddd; }
+  #help { position: absolute; bottom: 12px; left: 12px; font-size: 12px; color: #ddd; }
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; text-align: center; color: #fff; background: radial-gradient(ellipse at center, rgba(60,20,10,0.55), rgba(10,8,14,0.88)); z-index: 10; }
+  .screen h1 { font-size: 64px; margin: 0; letter-spacing: 4px; color: #ff9e5e; text-shadow: 0 4px 24px rgba(255,120,40,0.6); }
+  .screen h2 { font-size: 20px; font-weight: 400; color: #ffd9a0; margin: 8px 0 24px; }
+  .screen p { max-width: 560px; line-height: 1.5; color: #eee; }
+  .screen button { pointer-events: auto; font-size: 18px; font-weight: 700; padding: 12px 28px; margin: 6px; border: none; border-radius: 8px; background: #ff7a2e; color: #fff; cursor: pointer; }
+  .screen button:hover { background: #ff8f4d; }
+  .screen button.secondary { background: #33507a; }
+  #save-note { color: #9fd8a0; font-size: 14px; }
+  .keys { font-size: 13px; color: #ccc; margin-top: 18px; line-height: 1.7; }
 </style>
 <script type="importmap">
-{ "imports": { "three": "./vendor/three.module.min.js" } }
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
 </script>
 </head>
 <body>
+<div id="game"></div>
+<div id="hud">
+  <div id="stats" class="panel">
+    <div id="money">$0</div>
+    <div id="health-row"><span>HP</span><div id="health-bar"><div id="health-fill"></div></div><span id="health-text">100</span></div>
+    <div id="stars">☆☆☆☆☆</div>
+  </div>
+  <canvas id="minimap" width="180" height="180"></canvas>
+  <div id="objective-box" class="panel"><span id="objective"></span></div>
+  <div id="toasts"></div>
+  <div id="help" class="panel">WASD drive / walk &nbsp;·&nbsp; E enter or steal a car &nbsp;·&nbsp; Space brake &nbsp;·&nbsp; F punch &nbsp;·&nbsp; Click shoot (after Mission 2) &nbsp;·&nbsp; Shift sprint</div>
+</div>
+
+<div id="screen-menu" class="screen">
+  <h1>SOLMAR HEAT</h1>
+  <h2>A sun-soaked open-world crime story in Solmar Bay</h2>
+  <p>Dana &ldquo;Dash&rdquo; Reyes owes the Marlin Club $400. Steal cars, outrun the law, run packages at sunset — and pay the debt before the city eats you alive.</p>
+  <button id="start-btn">New Game</button>
+  <button id="continue-btn" class="secondary" style="display:none">Continue</button>
+  <div id="save-note" style="display:none">A saved game was found — Continue picks up where you left off.</div>
+  <div class="keys">WASD — drive / walk &nbsp;·&nbsp; E — enter or steal a car &nbsp;·&nbsp; Space — brake &nbsp;·&nbsp; F — punch<br>Mouse click — shoot once you own the pistol &nbsp;·&nbsp; Shift — sprint &nbsp;·&nbsp; Spray Shop clears your wanted level for $75</div>
+</div>
+
+<div id="screen-win" class="screen">
+  <h1>SOLMAR LEGEND</h1>
+  <h2>The debt is paid. The city is yours.</h2>
+  <p>You took the Marlin GT to the Old Lighthouse and slipped away clean.<br>Total earned: <b id="win-total">$0</b></p>
+  <button id="again-btn">Play Again</button>
+</div>
+
+<div id="screen-busted" class="screen">
+  <h1>BUSTED</h1>
+  <h2>The Solmar police finally caught up with you.</h2>
+  <p>The Marlin Club does not wait. Try again — faster this time.</p>
+  <button id="retry-btn">Try Again</button>
+</div>
+
+<div id="screen-wasted" class="screen">
+  <h1>WASTED</h1>
+  <h2>Solmar Bay keeps what it takes.</h2>
+  <p>Dana went down hard. The debt is still waiting.</p>
+  <button id="retry-btn2">Try Again</button>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
