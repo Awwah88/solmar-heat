@@ -1,228 +1,353 @@
-// Solmar Heat — the story missions and the taxi side job.
-// Three missions, in order: steal a car for the Marina Garage, run three
-// courier packages against a 240-second clock, then lose a three-star
-// wanted level and reach the Safehouse. A taxi job pays $40 a fare for
-// anyone driving the cab. Markers are glowing rings with a beam of light,
-// so the player always knows where to go.
+// Solmar Heat — missions and side work: Dana's four-mission story against the
+// Marlin Club, plus a taxi job, a vigilante bonus and shells on the beach.
+// The beacon pillar and the HUD objective always point at the next step.
 
 import * as THREE from 'three';
-import { ECONOMY, MISSIONS, TUNING, dist2d, clamp, mulberry32 } from './config.js';
+import { CONFIG, dist2d } from './config.js';
+import { makeCar } from './vehicles.js';
 
-function makeMarker(color) {
-  const group = new THREE.Group();
+/** Build the mission system. `game` is the shared game object. */
+export function createMissions(game) {
+  const scene = game.scene;
+  const L = CONFIG.landmarks;
+  const E = CONFIG.economy;
+
+  // One reusable beacon pillar + ground ring for the active objective.
+  const beaconMat = new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+  const beacon = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 40, 12, 1, true), beaconMat);
+  beacon.visible = false;
+  scene.add(beacon);
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(4.4, 5.6, 32),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+    new THREE.RingGeometry(2.2, 3.2, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.8, side: THREE.DoubleSide }),
   );
   ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.12;
-  group.add(ring);
-  const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.1, 1.6, 42, 10, 1, true),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  beam.position.y = 21;
-  group.add(beam);
-  const pin = new THREE.Mesh(
-    new THREE.ConeGeometry(1.6, 4, 10),
-    new THREE.MeshBasicMaterial({ color }),
-  );
-  pin.rotation.x = Math.PI;
-  pin.position.y = 9;
-  group.add(pin);
-  return group;
-}
+  ring.visible = false;
+  scene.add(ring);
 
-export class MissionSystem {
-  constructor(game) {
-    this.game = game;
-    this.index = 0;
-    this.done = [false, false, false];
-    this.packageIndex = 0;
-    this.timer = TUNING.mission2Seconds;
-    this.taxiJobs = 0;
-    this.taxiState = 'idle';
-    this.taxiTarget = null;
-    this.taxiPassengerAt = null;
-    this.marker = null;
-    this.taxiMarker = null;
-    this.rng = game.seed ? mulberry32(game.seed + 21) : Math.random;
+  // Shells: small golden spirals scattered off the driving line.
+  const shellMeshes = [];
+  const shellMat = new THREE.MeshLambertMaterial({ color: 0xffd700, emissive: 0x664400 });
+  for (const s of CONFIG.shells) {
+    const mesh = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.22, 8, 12), shellMat);
+    mesh.position.set(s.x, 0.5, s.z);
+    mesh.rotation.x = Math.PI / 2;
+    scene.add(mesh);
+    shellMeshes.push({ mesh, x: s.x, z: s.z, taken: false });
   }
 
-  get current() {
-    return MISSIONS[this.index] || null;
+  const missions = [
+    {
+      id: 1, title: 'Hot Wheels',
+      briefing: 'Dana owes the Marlin Club $400. Steal a car and bring it to the Marina Garage.',
+      steps: [
+        { text: 'Steal a car (walk up to one and press E)', target: null, check: () => !!game.player.car },
+        { text: 'Drive the car to the Marina Garage', target: { x: L.marina.x, z: L.marina.z }, radius: 10 },
+      ],
+      reward: E.mission1,
+    },
+    {
+      id: 2, title: 'Sunset Courier',
+      briefing: 'Three packages, four minutes. Deliver them all — and keep the pistol.',
+      steps: [
+        { text: 'Deliver package 1/3 to Hotel Solmar', target: { x: 144, z: -144 }, radius: 9, pay: E.packageBonus },
+        { text: 'Deliver package 2/3 to The Pier', target: { x: 60, z: 190 }, radius: 9, pay: E.packageBonus },
+        { text: 'Deliver package 3/3 to the Safehouse', target: { x: 54, z: -54 }, radius: 9, pay: E.packageBonus },
+      ],
+      reward: E.mission2 - 3 * E.packageBonus,
+      timed: CONFIG.missions.courierTime,
+    },
+    {
+      id: 3, title: 'The Heat',
+      briefing: 'The whole force is after you. Lose the heat, then slip home.',
+      steps: [
+        { text: 'Lose the heat — get your wanted level to zero', target: null, check: () => game.police.wanted === 0 },
+        { text: 'Reach the Safehouse', target: { x: L.safehouse.x, z: L.safehouse.z }, radius: 9 },
+      ],
+      reward: E.mission3,
+      onStart: () => { game.police.wanted = 3; },
+    },
+    {
+      id: 4, title: "Marlin's Debt",
+      briefing: "The boss's gold Marlin GT sits outside Hotel Solmar. Take it to the Old Lighthouse — with the whole city on your tail.",
+      steps: [
+        { text: 'Steal the gold Marlin GT at Hotel Solmar', target: { x: 126, z: -144 }, radius: 12, check: () => game.player.car === goldCar },
+        { text: 'Deliver the Marlin GT to the Old Lighthouse', target: { x: 150, z: 176 }, radius: 9 },
+        { text: 'Escape to the Safehouse', target: { x: L.safehouse.x, z: L.safehouse.z }, radius: 9 },
+      ],
+      reward: E.mission4,
+      onStart: () => { spawnGoldCar(); },
+    },
+  ];
+
+  let missionIndex = 0;
+  let stepIndex = 0;
+  let timer = 0;
+  let goldCar = null;
+  let finished = false;
+
+  // Taxi side job.
+  let taxi = { state: 'idle', passenger: null, dest: null, at: 0 };
+  // Vigilante side job: ram the black getaway car three times.
+  let vigilante = { car: null, hits: 0, lastHitAt: 0, respawnAt: 0 };
+  let shellsTaken = 0;
+
+  function spawnGoldCar() {
+    if (goldCar) return;
+    goldCar = makeCar(scene, CONFIG.colors.gold, 126, -144, Math.PI, { gold: true });
+    goldCar.group.children.forEach((c) => { if (c.material && c.material.emissive !== undefined) c.material.emissive = new THREE.Color(0x442200); });
   }
 
-  get active() {
-    return this.index < 3 && !this.done[this.index];
+  function currentMission() {
+    return missions[missionIndex] || null;
   }
 
-  build() {
-    this.marker = makeMarker(0xffd23f);
-    this.marker.visible = false;
-    this.game.scene.add(this.marker);
-    this.taxiMarker = makeMarker(0xf7c948);
-    this.taxiMarker.visible = false;
-    this.game.scene.add(this.taxiMarker);
-    this.refreshObjective();
-    return this;
+  function currentStep() {
+    const m = currentMission();
+    return m ? m.steps[stepIndex] || null : null;
   }
 
-  refreshObjective() {
-    const g = this.game;
-    if (this.index >= 3 || this.done[2]) {
-      this.marker.visible = false;
-      g.hud.setObjective('Free roam', 'Solmar Bay is yours. Earn cash, dodge the law.');
+  function setObjective(text) {
+    game.hud.setObjective(text);
+  }
+
+  function startMission(i) {
+    missionIndex = i;
+    stepIndex = 0;
+    const m = currentMission();
+    if (!m) return;
+    timer = m.timed || 0;
+    if (m.onStart) m.onStart();
+    game.hud.toast(`Mission ${m.id}: ${m.title}`, m.briefing);
+    setObjective(m.steps[0].text);
+  }
+
+  function completeMission() {
+    const m = currentMission();
+    game.addMoney(m.reward);
+    game.audio.jingle();
+    game.hud.toast(`Mission complete: ${m.title}`, `+$${m.reward}`);
+    game.save();
+    if (m.id === 2) {
+      game.combat.givePistol();
+      game.hud.toast('New weapon', 'Pistol unlocked — click to shoot');
+      spawnVigilante();
+    }
+    missionIndex++;
+    stepIndex = 0;
+    if (missionIndex >= missions.length) {
+      finished = true;
+      game.win();
       return;
     }
-    const m = this.current;
-    if (!m) return;
-    if (this.index === 1) {
-      const pkg = m.packages[this.packageIndex];
-      if (pkg) {
-        this.marker.position.set(pkg.at[0], 0, pkg.at[1]);
-        this.marker.visible = true;
-        g.hud.setObjective(m.title, `Deliver package ${this.packageIndex + 1} of 3 — ${pkg.name} (${Math.ceil(this.timer)}s)`);
+    startMission(missionIndex);
+  }
+
+  function spawnVigilante() {
+    if (vigilante.car) return;
+    const roads = CONFIG.world.roads;
+    const road = roads[Math.floor(Math.random() * roads.length)];
+    vigilante.car = makeCar(scene, 0x111111, road, -54, 0, {});
+    vigilante.hits = 0;
+  }
+
+  function startTaxi() {
+    const ped = game.pedestrians.nearest(game.playerPos().x, game.playerPos().z, 30, game.time);
+    if (!ped) return false;
+    const dests = [L.marina, L.hotel, L.pier, L.spray];
+    const dest = dests[Math.floor(Math.random() * dests.length)];
+    taxi = { state: 'waiting', passenger: ped, dest, at: 0 };
+    game.hud.toast('Taxi fare', `Pick up the passenger, then drive to ${dest.name}`);
+    return true;
+  }
+
+  return {
+    get current() {
+      return currentMission();
+    },
+    get missionIndex() {
+      return missionIndex;
+    },
+    get goldCar() {
+      return goldCar;
+    },
+    get finished() {
+      return finished;
+    },
+    get shellsTaken() {
+      return shellsTaken;
+    },
+    get marker() {
+      const step = currentStep();
+      if (step && step.target) return step.target;
+      if (taxi.state === 'riding' && taxi.dest) return taxi.dest;
+      if (taxi.state === 'waiting' && taxi.passenger) {
+        const p = taxi.passenger.group.position;
+        return { x: p.x, z: p.z };
       }
-      return;
-    }
-    this.marker.position.set(m.marker[0], 0, m.marker[1]);
-    this.marker.visible = true;
-    g.hud.setObjective(m.title, m.objective);
-  }
+      if (vigilante.car && vigilante.hits < 3) {
+        const p = vigilante.car.group.position;
+        return { x: p.x, z: p.z, red: true };
+      }
+      return null;
+    },
 
-  completeMission() {
-    const g = this.game;
-    const m = this.current;
-    if (!m) return;
-    this.done[this.index] = true;
-    g.money += m.reward;
-    g.audio.missionDone();
-    g.hud.toast(`${m.title} complete — +$${m.reward}`);
-    g.save.save();
-    if (this.index === 1) {
-      g.combat.hasPistol = true;
-      g.police.setWanted(3);
-      g.hud.toast('The Marlin Club gave you a pistol. And the heat is on.');
-    }
-    this.index++;
-    if (this.index === 1) {
-      this.packageIndex = 0;
-      this.timer = TUNING.mission2Seconds;
-    }
-    if (this.index >= 3) {
-      g.win();
-      return;
-    }
-    this.refreshObjective();
-    g.hud.refresh();
-  }
+    start() {
+      startMission(0);
+    },
 
-  failMission2() {
-    const g = this.game;
-    this.packageIndex = 0;
-    this.timer = TUNING.mission2Seconds;
-    g.audio.missionFail();
-    g.hud.toast('Out of time — the packages go back. Try the run again.');
-    this.refreshObjective();
-  }
+    /** Jump straight to a mission (used to stage the mission screenshot). */
+    jumpTo(i) {
+      missionIndex = Math.max(0, Math.min(i, missions.length - 1));
+      stepIndex = 0;
+      finished = false;
+      const m = currentMission();
+      if (!m) return;
+      timer = m.timed || 0;
+      if (m.onStart) m.onStart();
+      if (missionIndex >= 2) game.combat.givePistol();
+      setObjective(m.steps[0].text);
+    },
 
-  _checkMissions() {
-    const g = this.game;
-    const p = g.player.pos;
-    if (this.index === 0 && !this.done[0]) {
-      if (g.player.car && dist2d(p.x, p.z, 140, -118) < TUNING.markerRadius) this.completeMission();
-      return;
-    }
-    if (this.index === 1 && !this.done[1]) {
-      const m = this.current;
-      const pkg = m.packages[this.packageIndex];
-      if (pkg && dist2d(p.x, p.z, pkg.at[0], pkg.at[1]) < TUNING.packageRadius) {
-        this.packageIndex++;
-        g.audio.pickup();
-        if (this.packageIndex >= 3) {
-          this.completeMission();
-        } else {
-          g.hud.toast(`Package ${this.packageIndex} of 3 delivered.`);
-          this.refreshObjective();
+    reset() {
+      missionIndex = 0;
+      stepIndex = 0;
+      finished = false;
+      if (goldCar) {
+        scene.remove(goldCar.group);
+        goldCar = null;
+      }
+      if (vigilante.car) {
+        scene.remove(vigilante.car.group);
+        vigilante.car = null;
+      }
+      taxi = { state: 'idle', passenger: null, dest: null, at: 0 };
+      for (const s of shellMeshes) {
+        s.taken = false;
+        s.mesh.visible = true;
+      }
+      shellsTaken = 0;
+      beacon.visible = false;
+      ring.visible = false;
+      startMission(0);
+    },
+
+    /** Called when the player presses E near a passenger. */
+    tryTaxiInteract() {
+      if (taxi.state === 'idle') return startTaxi();
+      if (taxi.state === 'waiting') {
+        const p = game.playerPos();
+        const pp = taxi.passenger.group.position;
+        if (dist2d(p.x, p.z, pp.x, pp.z) < 3.5) {
+          taxi.state = 'riding';
+          game.hud.toast('Passenger aboard', `Drive to ${taxi.dest.name} — $${E.taxiFare}`);
+          return true;
         }
       }
-      return;
-    }
-    if (this.index === 2 && !this.done[2]) {
-      if (g.police.wanted === 0 && dist2d(p.x, p.z, -140, 120) < TUNING.markerRadius) {
-        this.completeMission();
-      }
-    }
-  }
+      return false;
+    },
 
-  _checkTaxi(dt) {
-    const g = this.game;
-    const inTaxi = g.player.car === g.vehicles.taxiCar;
-    if (!inTaxi) {
-      if (this.taxiState !== 'idle') {
-        this.taxiState = 'idle';
-        this.taxiMarker.visible = false;
+    update(dt, time) {
+      const m = currentMission();
+      const p = game.playerPos();
+      if (m && !finished) {
+        if (m.timed) {
+          timer -= dt;
+          if (timer <= 0) {
+            game.hud.toast('Too slow', `${m.title} failed — try again`);
+            startMission(missionIndex);
+            return;
+          }
+        }
+        const step = currentStep();
+        if (step) {
+          let done = false;
+          if (step.check) done = step.check();
+          else if (step.target && dist2d(p.x, p.z, step.target.x, step.target.z) < (step.radius || 9)) done = true;
+          if (done) {
+            if (step.pay) {
+              game.addMoney(step.pay);
+              game.hud.toast(`Package delivered`, `+$${step.pay}`);
+            }
+            if (m.id === 4 && stepIndex === 0 && game.player.car === goldCar) {
+              game.police.wanted = 4;
+              game.hud.toast('The whole city is coming', 'Wanted level 4 — run!');
+            }
+            stepIndex++;
+            if (stepIndex >= m.steps.length) {
+              completeMission();
+              return;
+            }
+            setObjective(currentStep().text);
+          }
+          // Beacon + objective display.
+          const s = currentStep();
+          if (s && s.target) {
+            beacon.visible = true;
+            beacon.position.set(s.target.x, 20, s.target.z);
+            beacon.rotation.y = time * 0.5;
+            ring.visible = true;
+            ring.position.set(s.target.x, 0.1, s.target.z);
+            ring.scale.setScalar(1 + Math.sin(time * 4) * 0.12);
+          } else {
+            beacon.visible = false;
+            ring.visible = false;
+          }
+          if (m.timed) {
+            game.hud.setObjective(`${s ? s.text : ''}  —  ${Math.ceil(timer)}s`);
+          } else if (s) {
+            setObjective(s.text);
+          }
+        }
       }
-      return;
-    }
-    const p = g.player.pos;
-    if (this.taxiState === 'idle') {
-      // A passenger waves from a random roadside corner.
-      const spot = this._randomRoadside();
-      this.taxiPassengerAt = spot;
-      this.taxiTarget = null;
-      this.taxiState = 'waiting';
-      this.taxiMarker.position.set(spot.x, 0, spot.z);
-      this.taxiMarker.visible = true;
-      g.hud.toast('Taxi job: pick up the passenger at the yellow marker.');
-    } else if (this.taxiState === 'waiting') {
-      if (dist2d(p.x, p.z, this.taxiPassengerAt.x, this.taxiPassengerAt.z) < 9) {
-        this.taxiState = 'aboard';
-        this.taxiTarget = this._randomRoadside();
-        this.taxiMarker.position.set(this.taxiTarget.x, 0, this.taxiTarget.z);
-        g.hud.toast('Passenger aboard — take them to the yellow marker.');
-      }
-    } else if (this.taxiState === 'aboard') {
-      if (dist2d(p.x, p.z, this.taxiTarget.x, this.taxiTarget.z) < 9) {
-        this.taxiJobs++;
-        g.money += ECONOMY.taxiFare;
-        g.audio.cashRegister();
-        g.hud.toast(`Fare complete — +$${ECONOMY.taxiFare}`);
-        this.taxiState = 'idle';
-        this.taxiMarker.visible = false;
-        g.hud.refresh();
-      }
-    }
-  }
 
-  _randomRoadside() {
-    const rng = this.rng;
-    const line = -160 + Math.floor(rng() * 9) * 40;
-    const along = -140 + Math.floor(rng() * 8) * 40;
-    const off = rng() < 0.5 ? -8 : 8;
-    if (rng() < 0.5) return { x: line + off, z: along };
-    return { x: along, z: line + off };
-  }
-
-  update(dt) {
-    const g = this.game;
-    if (g.state !== 'playing') return;
-    if (this.index === 1 && !this.done[1] && !g.shotMode) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = 0;
-        this.failMission2();
+      // Taxi: deliver the passenger.
+      if (taxi.state === 'riding' && taxi.dest) {
+        if (game.player.car && dist2d(p.x, p.z, taxi.dest.x, taxi.dest.z) < 9) {
+          game.addMoney(E.taxiFare);
+          game.hud.toast('Fare complete', `+$${E.taxiFare}`);
+          taxi = { state: 'idle', passenger: null, dest: null, at: time + 15 };
+        }
+      } else if (taxi.state === 'idle' && time > taxi.at && !game.player.car) {
+        // Offer a new fare every so often while on foot.
+        if (Math.random() < dt * 0.05) startTaxi();
       }
-      // Refresh the countdown text a few times a second.
-      if (Math.floor(this.timer * 4) !== Math.floor((this.timer + dt) * 4)) this.refreshObjective();
-    }
-    // Pulse the marker ring.
-    if (this.marker && this.marker.visible) {
-      const s = 1 + Math.sin(g.elapsed * 3) * 0.08;
-      this.marker.scale.set(s, 1, s);
-    }
-    this._checkMissions();
-    this._checkTaxi(dt);
-  }
+
+      // Vigilante: ram the black getaway car three times.
+      if (vigilante.car && game.player.car) {
+        const vp = vigilante.car.group.position;
+        const d = dist2d(p.x, p.z, vp.x, vp.z);
+        if (d < 3.6 && Math.abs(game.player.car.speed) > 8 && time - vigilante.lastHitAt > 2) {
+          vigilante.lastHitAt = time;
+          vigilante.hits++;
+          game.audio.crash();
+          game.hud.toast(`Vigilante ${vigilante.hits}/3`, 'Keep ramming the getaway car!');
+          if (vigilante.hits >= 3) {
+            game.addMoney(E.vigilanteBonus);
+            game.hud.toast('Vigilante bonus', `+$${E.vigilanteBonus}`);
+            scene.remove(vigilante.car.group);
+            vigilante.car = null;
+            vigilante.respawnAt = time + 45;
+          }
+        }
+      } else if (!vigilante.car && vigilante.respawnAt > 0 && time > vigilante.respawnAt && game.combat.pistolOwned) {
+        vigilante.respawnAt = 0;
+        spawnVigilante();
+      }
+
+      // Shells: walk or drive over one to collect it.
+      for (const s of shellMeshes) {
+        if (s.taken) continue;
+        s.mesh.rotation.z += dt;
+        if (dist2d(p.x, p.z, s.x, s.z) < 2.4) {
+          s.taken = true;
+          s.mesh.visible = false;
+          shellsTaken++;
+          game.addMoney(E.shellValue);
+          game.audio.blip();
+          game.hud.toast('Shell found', `+$${E.shellValue}  (${shellsTaken}/10)`);
+        }
+      }
+    },
+  };
 }

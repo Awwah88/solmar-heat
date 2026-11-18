@@ -1,69 +1,85 @@
-// Solmar Heat — staged scenes for screenshots.
-// ?shot=cover|foot|mission|menu (with &seed=1) drops the running game into
-// a real gameplay state for the shot: no fake renders, the same world the
-// player drives in, posed so each system reads at a glance. In shot mode
-// the police cannot hurt the player and the mission clock is frozen, so a
-// slow headless render still catches the scene intact.
+// Solmar Heat — staged screenshots: when the page loads with ?shot=cover,
+// ?shot=foot, ?shot=mission or ?shot=menu, pose the scene for the camera.
+// FIX (learned the hard way): in shot mode the police stay clear of the
+// player car and frozen, and toasts are suppressed — or a cruiser rams the
+// player mid-shot and the cover is ruined.
 
-export function readShotParams() {
+import { makeCar } from './vehicles.js';
+import { CONFIG } from './config.js';
+
+/** Stage a shot scene. Returns a fixed camera pose, or null for normal play. */
+export function stageShot(game) {
   const params = new URLSearchParams(window.location.search);
   const shot = params.get('shot');
-  const seed = Number(params.get('seed') || 0) || 0;
-  return { shot, seed };
-}
+  if (!shot) return null;
 
-export function applyShot(game, shot) {
-  if (!shot) return false;
-  game.shotMode = shot;
-  const g = game;
-  if (shot === 'menu') {
-    g.state = 'menu';
-    g.hud.showScreen('menu');
-    return true;
-  }
-  // Every other shot starts the story for real, then poses it.
-  g.startStory(true);
+  game.shotMode = true;
+  game.hud.shotMode = true;
+  game.police.frozen = true;
+  game.hud.hideScreens();
+  game.state = 'playing';
+
   if (shot === 'cover') {
-    // A three-star chase mid-courier: in a car, wanted 3, police closing.
-    g.missions.index = 1;
-    g.missions.done = [false, false, false];
-    g.missions.packageIndex = 1;
-    g.missions.timer = 180;
-    g.money = 450;
-    g.enterCar(g.redCar);
-    g.redCar.pos.set(80, 0, 40);
-    g.redCar.setHeading(Math.PI);
-    g.redCar.speed = 12;
-    g.player.pos.set(80, 0, 40);
-    g.player.heading = Math.PI;
-    g.police.setWanted(3);
-    g.missions.refreshObjective();
-  } else if (shot === 'foot') {
-    // On foot at a city intersection, first mission, no heat.
-    g.missions.index = 0;
-    g.missions.done = [false, false, false];
-    g.player.pos.set(40, 0, -40);
-    g.player.heading = Math.PI / 4;
-    g.police.setWanted(0);
-    g.missions.refreshObjective();
-  } else if (shot === 'mission') {
-    // Courier run to the Pier, two stars, police in pursuit.
-    g.missions.index = 1;
-    g.missions.done = [false, false, false];
-    g.missions.packageIndex = 0;
-    g.missions.timer = 210;
-    g.money = 200;
-    g.enterCar(g.redCar);
-    g.redCar.pos.set(60, 0, 168);
-    g.redCar.setHeading(0);
-    g.redCar.speed = 14;
-    g.player.pos.set(60, 0, 168);
-    g.player.heading = 0;
-    g.police.setWanted(2);
-    g.missions.refreshObjective();
-  } else {
-    return false;
+    // Police chase at sunset by the pier: player car with three cruisers
+    // ahead of it, the sea and the pier behind them. Cruisers are frozen
+    // clear of the player car so nothing rams it mid-shot.
+    game.money = 450;
+    game.missions.jumpTo(1);
+    const car = makeCar(game.scene, 0xc23b2e, 60, 172, 0, { player: true });
+    game.enterCar(car);
+    game.police.wanted = 3;
+    const cruiserSpots = [[42, 182], [78, 182], [60, 188]];
+    for (const [x, z] of cruiserSpots) {
+      const cruiser = makeCar(game.scene, CONFIG.colors.police, x, z, Math.PI, { police: true });
+      game.police.policeCars.push(cruiser);
+    }
+    return { camPos: [60, 5.5, 156], camLook: [60, 2, 196] };
   }
-  g.hud.refresh();
-  return true;
+
+  if (shot === 'foot') {
+    // Dana on foot at a busy intersection, pedestrians and traffic around.
+    game.money = 120;
+    game.missions.jumpTo(0);
+    game.setPlayerPos(10, -10, Math.PI * 0.75);
+    for (let i = 0; i < 4 && i < game.pedestrians.peds.length; i++) {
+      const ped = game.pedestrians.peds[i];
+      ped.group.position.set(14 + i * 2.5, 0, -16 - i * 1.5);
+      ped.heading = Math.PI;
+    }
+    return { camPos: [2, 6, 2], camLook: [16, 1, -18] };
+  }
+
+  if (shot === 'mission') {
+    // Mission 4 in full flight: the gold Marlin GT racing for the lighthouse
+    // with the whole city on its tail.
+    game.money = 750;
+    game.combat.givePistol();
+    game.missions.jumpTo(3);
+    const gold = game.missions.goldCar;
+    if (gold) {
+      gold.group.position.set(150, 0, 162);
+      gold.heading = 0;
+      gold.group.rotation.y = 0;
+      game.enterCar(gold);
+      // The objective must match the staged moment: the car is already
+      // stolen, so the tracker shows the delivery, not the theft.
+      game.hud.setObjective('Deliver the Marlin GT to the Old Lighthouse');
+    }
+    game.police.wanted = 4;
+    const cruiserSpots = [[136, 176], [164, 176], [150, 170]];
+    for (const [x, z] of cruiserSpots) {
+      const cruiser = makeCar(game.scene, CONFIG.colors.police, x, z, 0, { police: true });
+      game.police.policeCars.push(cruiser);
+    }
+    return { camPos: [150, 6, 146], camLook: [150, 2, 190] };
+  }
+
+  if (shot === 'menu') {
+    // Title screen over the whole sun-soaked city.
+    game.state = 'menu';
+    game.hud.showScreen('menu');
+    return { camPos: [-40, 75, 150], camLook: [0, 0, -30] };
+  }
+
+  return null;
 }
