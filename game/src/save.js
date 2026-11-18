@@ -1,57 +1,33 @@
-// Solmar Heat — saving: a small JSON snapshot in localStorage, written on
-// every mission completion and every twenty seconds of play. Loading is
-// opt-in from the menu's Continue button.
+// localStorage save / load. The save holds money, mission progress,
+// position and shells; it is written on mission completion and every
+// 20 seconds of play.
+const KEY = 'solmar-heat-save-v1';
 
-const SAVE_KEY = 'solmar-heat-save-v1';
+export function loadSave() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (typeof s !== 'object' || s === null) return null;
+    return s;
+  } catch (e) { return null; }
+}
 
-/** Write the current progress. Never throws — storage may be unavailable. */
 export function saveGame(state) {
   try {
-    const data = {
-      version: 1,
-      money: state.money,
-      missionIndex: state.missionIndex,
-      pistolOwned: state.pistolOwned,
-      shellsTaken: state.shellsTaken,
-      health: state.health,
+    localStorage.setItem(KEY, JSON.stringify({
+      money: Math.floor(state.money || 0),
+      missionIndex: state.missionIndex || 0,
+      health: Math.ceil(state.health || 100),
+      x: state.x || 0,
+      z: state.z || 0,
+      shellsTaken: state.shellsTaken || 0,
+      hasPistol: !!state.hasPistol,
       savedAt: Date.now(),
-    };
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-    return true;
-  } catch {
-    return false;
-  }
+    }));
+  } catch (e) { /* storage may be unavailable; the game goes on */ }
 }
 
-/** Read the saved progress, or null when there is none or it is corrupt. */
-export function loadGame() {
-  try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (!data || data.version !== 1) return null;
-    return {
-      money: typeof data.money === 'number' ? data.money : 0,
-      missionIndex: typeof data.missionIndex === 'number' ? data.missionIndex : 0,
-      pistolOwned: !!data.pistolOwned,
-      shellsTaken: typeof data.shellsTaken === 'number' ? data.shellsTaken : 0,
-      health: typeof data.health === 'number' ? data.health : 100,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/** True when a save exists to continue from. */
-export function hasSave() {
-  return loadGame() !== null;
-}
-
-/** Wipe the save (used when the player starts a brand-new game). */
 export function clearSave() {
-  try {
-    window.localStorage.removeItem(SAVE_KEY);
-  } catch {
-    // Storage may be unavailable; nothing to do.
-  }
+  try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
 }

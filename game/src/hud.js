@@ -1,175 +1,136 @@
-// Solmar Heat — the HUD: money, health, wanted stars, the mission tracker,
-// toasts, the minimap, and the menu / win / busted / wasted screens.
-
-import { CONFIG } from './config.js';
-
-/** Wire the HUD. `game` is the shared game object. */
-export function createHUD(game) {
+// HUD: money, wanted stars, health, minimap, objective, mission
+// tracker, toasts and the menu screens. Toasts are suppressed while a
+// screenshot is being staged.
+export function createHud(G) {
   const $ = (id) => document.getElementById(id);
-  const el = {
-    money: $('money'),
-    health: $('health-fill'),
-    healthText: $('health-text'),
-    stars: $('stars'),
-    objective: $('objective'),
-    objectiveBox: $('objective-box'),
-    toasts: $('toasts'),
-    minimap: $('minimap'),
-    menu: $('screen-menu'),
-    win: $('screen-win'),
-    busted: $('screen-busted'),
-    wasted: $('screen-wasted'),
-    winTotal: $('win-total'),
-    startBtn: $('start-btn'),
-    continueBtn: $('continue-btn'),
-    againBtn: $('again-btn'),
-    retryBtn: $('retry-btn'),
-    retryBtn2: $('retry-btn2'),
-    saveNote: $('save-note'),
-  };
-  const ctx = el.minimap.getContext('2d');
-  let shotMode = false;
+  const moneyEl = $('money');
+  const starsEl = $('stars');
+  const healthFill = $('health-fill');
+  const healthText = $('health-text');
+  const objectiveEl = $('objective');
+  const trackerEl = $('tracker');
+  const toastsEl = $('toasts');
+  const speedEl = $('speed');
+  const map = $('minimap');
+  const mctx = map ? map.getContext('2d') : null;
 
-  function starsText(n) {
-    let s = '';
-    for (let i = 0; i < 5; i++) s += i < n ? '★' : '☆';
-    return s;
+  let toastTimer = null;
+
+  function renderStars(n) {
+    starsEl.textContent = '★'.repeat(n) + '☆'.repeat(5 - n);
+    starsEl.style.color = n >= 3 ? '#ff4444' : '#ffd27a';
   }
 
+  function setObjective(text) {
+    if (objectiveEl && objectiveEl.textContent !== text) objectiveEl.textContent = text;
+  }
+
+  function toast(msg) {
+    if (G.shotMode || !toastsEl) return;
+    toastsEl.textContent = msg;
+    toastsEl.style.opacity = '1';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastsEl.style.opacity = '0'; }, 3400);
+  }
+
+  function setTracker() {
+    if (!trackerEl) return;
+    const titles = ['M1 Hot Wheels', 'M2 Sunset Courier', 'M3 The Heat', "M4 Marlin's Debt"];
+    const mi = G.missions.missionIndex;
+    let html = '';
+    titles.forEach((t, i) => {
+      const done = i < mi || mi >= 4;
+      const active = i === mi && mi < 4;
+      html += `<div class="${done ? 'done' : active ? 'active' : ''}">${done ? '✓' : active ? '▶' : '○'} ${t}</div>`;
+    });
+    if (mi === 1) html += `<div class="sub">Package ${G.missions.packageIdx + 1} of 3 · ${Math.ceil(G.missions.timer)}s</div>`;
+    trackerEl.innerHTML = html;
+  }
+
+  function drawMinimap() {
+    if (!mctx) return;
+    const S = 140, W = 380; // world spans -190..190
+    const px = (x) => ((x + 190) / W) * S;
+    const pz = (z) => ((z + 190) / W) * S;
+    mctx.fillStyle = '#10141a';
+    mctx.fillRect(0, 0, S, S);
+    // Roads.
+    mctx.fillStyle = '#3a3a42';
+    for (const r of [-162, -126, -90, -54, -18, 18, 54, 90, 126, 162]) {
+      mctx.fillRect(px(r) - 2, 0, 4, S);
+      mctx.fillRect(0, pz(r) - 2, S, 4);
+    }
+    // Beach + sea.
+    mctx.fillStyle = '#d9b380';
+    mctx.fillRect(0, pz(162), S, pz(182) - pz(162));
+    mctx.fillStyle = '#1d6f8e';
+    mctx.fillRect(0, pz(182), S, S - pz(182));
+    // Buildings.
+    mctx.fillStyle = '#8a8a86';
+    for (const b of G.city.buildings) {
+      mctx.fillRect(px(b.x - b.hw), pz(b.z - b.hd), Math.max(2, px(b.x + b.hw) - px(b.x - b.hw)), Math.max(2, pz(b.z + b.hd) - pz(b.z - b.hd)));
+    }
+    // Landmarks.
+    mctx.fillStyle = '#ffd27a';
+    for (const k of Object.keys(G.city.landmarks)) {
+      const l = G.city.landmarks[k];
+      mctx.fillRect(px(l.x) - 2, pz(l.z) - 2, 4, 4);
+    }
+    // Mission marker.
+    const mk = G.missions.marker;
+    if (mk) {
+      mctx.fillStyle = '#ffdd33';
+      mctx.beginPath();
+      mctx.arc(px(mk.x), pz(mk.z), 4, 0, Math.PI * 2);
+      mctx.fill();
+    }
+    // Traffic (grey), police (red), gold car (gold).
+    mctx.fillStyle = '#9aa0a6';
+    for (const c of G.traffic.cars) mctx.fillRect(px(c.group.position.x) - 1, pz(c.group.position.z) - 1, 2, 2);
+    mctx.fillStyle = '#ff4444';
+    for (const c of G.police.policeCars) mctx.fillRect(px(c.group.position.x) - 1, pz(c.group.position.z) - 1, 3, 3);
+    if (G.missions.goldCar) {
+      mctx.fillStyle = '#ffd700';
+      mctx.fillRect(px(G.missions.goldCar.group.position.x) - 2, pz(G.missions.goldCar.group.position.z) - 2, 4, 4);
+    }
+    // Player arrow.
+    const p = G.playerPos();
+    mctx.save();
+    mctx.translate(px(p.x), pz(p.z));
+    mctx.rotate(Math.PI - G.playerHeading());
+    mctx.fillStyle = '#ffffff';
+    mctx.beginPath();
+    mctx.moveTo(0, -5); mctx.lineTo(4, 4); mctx.lineTo(-4, 4); mctx.closePath();
+    mctx.fill();
+    mctx.restore();
+  }
+
+  let mapTick = 0;
   return {
-    set shotMode(v) {
-      shotMode = v;
-    },
-
-    setMoney(n) {
-      el.money.textContent = `$${n}`;
-    },
-
+    setMoney(v) { if (moneyEl) moneyEl.textContent = '$' + Math.floor(v); },
+    setWanted(n) { renderStars(n); },
     setHealth(n) {
-      el.health.style.width = `${Math.max(0, Math.min(100, n))}%`;
-      el.healthText.textContent = `${Math.ceil(Math.max(0, n))}`;
+      const h = Math.max(0, Math.min(100, Math.ceil(n)));
+      if (healthFill) healthFill.style.width = h + '%';
+      if (healthText) healthText.textContent = h;
     },
-
-    setWanted(n) {
-      el.stars.textContent = starsText(n);
-      el.stars.style.color = n > 0 ? '#ffd23e' : '#888';
+    setSpeed(v) { if (speedEl) speedEl.textContent = v > 0.5 ? Math.round(v * 3.6) + ' km/h' : ''; },
+    setObjective, toast, setTracker,
+    drawMinimap(dt) {
+      mapTick += dt;
+      if (mapTick > 0.12) { mapTick = 0; drawMinimap(); }
     },
-
-    setObjective(text) {
-      el.objective.textContent = text;
-      el.objectiveBox.style.display = text ? 'block' : 'none';
-    },
-
-    toast(title, body) {
-      if (shotMode) return; // FIX: no toasts over staged shots.
-      const div = document.createElement('div');
-      div.className = 'toast';
-      const b = document.createElement('div');
-      b.className = 'toast-title';
-      b.textContent = title;
-      div.appendChild(b);
-      if (body) {
-        const s = document.createElement('div');
-        s.className = 'toast-body';
-        s.textContent = body;
-        div.appendChild(s);
-      }
-      el.toasts.appendChild(div);
-      while (el.toasts.children.length > 3) el.toasts.removeChild(el.toasts.firstChild);
-      setTimeout(() => {
-        if (div.parentNode) div.parentNode.removeChild(div);
-      }, 4000);
-    },
-
     showScreen(name) {
-      for (const s of [el.menu, el.win, el.busted, el.wasted]) {
-        if (s) s.style.display = 'none';
+      for (const id of ['menu', 'pause-menu', 'win-screen', 'busted-screen', 'wasted-screen']) {
+        const el = $(id);
+        if (el) el.style.display = id === name ? 'flex' : 'none';
       }
-      if (name === 'menu' && el.menu) el.menu.style.display = 'flex';
-      if (name === 'win' && el.win) {
-        el.winTotal.textContent = `$${game.money}`;
-        el.win.style.display = 'flex';
-      }
-      if (name === 'busted' && el.busted) el.busted.style.display = 'flex';
-      if (name === 'wasted' && el.wasted) el.wasted.style.display = 'flex';
+      const hud = $('hud');
+      if (hud) hud.style.display = name === null ? 'block' : 'none';
     },
-
-    hideScreens() {
-      for (const s of [el.menu, el.win, el.busted, el.wasted]) {
-        if (s) s.style.display = 'none';
-      }
-    },
-
-    showContinue(hasSave) {
-      if (el.continueBtn) el.continueBtn.style.display = hasSave ? 'inline-block' : 'none';
-      if (el.saveNote) el.saveNote.style.display = hasSave ? 'block' : 'none';
-    },
-
-    onStart(fn) {
-      if (el.startBtn) el.startBtn.addEventListener('click', () => fn(false));
-      if (el.continueBtn) el.continueBtn.addEventListener('click', () => fn(true));
-      if (el.againBtn) el.againBtn.addEventListener('click', () => fn(false));
-      if (el.retryBtn) el.retryBtn.addEventListener('click', () => fn(false));
-      if (el.retryBtn2) el.retryBtn2.addEventListener('click', () => fn(false));
-    },
-
-    /** Top-down minimap: roads, sea, player, police, mission marker. */
-    drawMinimap() {
-      const W = el.minimap.width;
-      const H = el.minimap.height;
-      const toMap = (x, z) => [((x + 210) / 420) * W, ((z + 210) / 420) * H];
-      ctx.clearRect(0, 0, W, H);
-      ctx.fillStyle = 'rgba(20, 40, 30, 0.85)';
-      ctx.fillRect(0, 0, W, H);
-      // Sea.
-      ctx.fillStyle = '#1f7a8c';
-      ctx.fillRect(0, ((170 + 210) / 420) * H, W, H - ((170 + 210) / 420) * H);
-      // Roads.
-      ctx.strokeStyle = '#666';
-      ctx.lineWidth = 2;
-      for (const r of CONFIG.world.roads) {
-        const [x] = toMap(r, 0);
-        const [, z] = toMap(0, r);
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, H);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, z);
-        ctx.lineTo(W, z);
-        ctx.stroke();
-      }
-      // Mission marker.
-      const marker = game.missions ? game.missions.marker : null;
-      if (marker) {
-        const [mx, mz] = toMap(marker.x, marker.z);
-        ctx.fillStyle = marker.red ? '#ff4444' : '#ffd23e';
-        ctx.beginPath();
-        ctx.arc(mx, mz, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // Police.
-      if (game.police) {
-        ctx.fillStyle = '#4488ff';
-        for (const car of game.police.policeCars) {
-          const [px, pz] = toMap(car.group.position.x, car.group.position.z);
-          ctx.beginPath();
-          ctx.arc(px, pz, 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      // Player.
-      const p = game.playerPos();
-      if (p) {
-        const [px, pz] = toMap(p.x, p.z);
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(px, pz, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
+    setWinMoney(v) {
+      const el = $('win-money');
+      if (el) el.textContent = '$' + Math.floor(v);
     },
   };
 }

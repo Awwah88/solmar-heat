@@ -1,129 +1,91 @@
-// Solmar Heat — pedestrians: city folk strolling the sidewalks, fleeing from
-// speeding cars, and getting knocked down (and back up) when hit.
-
+// Pedestrians: sidewalk walkers who flee from danger, plus the taxi
+// fare waiting at the beach stand.
 import * as THREE from 'three';
-import { CONFIG, dist2d, clamp } from './config.js';
+import { CFG, makeRng, clamp } from './config.js';
 
-const SHIRTS = [0xe85a4a, 0x4a90e8, 0x50c878, 0xf2c200, 0x9b59b6, 0xecf0f1, 0x2c3e50, 0xff8c42];
-const PANTS = [0x2c3e50, 0x5d6d7e, 0x7b241c, 0x1a5276, 0x4a235a];
-
-/** Build one pedestrian: capsule body, head, simple limbs. */
-function buildPedestrian() {
-  const group = new THREE.Group();
-  const shirt = SHIRTS[Math.floor(Math.random() * SHIRTS.length)];
-  const pants = PANTS[Math.floor(Math.random() * PANTS.length)];
-  const skin = [0xe8b88a, 0xc98d64, 0x8a5a3a, 0xf0c8a0][Math.floor(Math.random() * 4)];
-
+function makeWalker(color) {
+  const g = new THREE.Group();
   const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.32, 0.38, 0.9, 8),
-    new THREE.MeshLambertMaterial({ color: shirt }),
+    new THREE.CylinderGeometry(0.32, 0.4, 1.5, 8),
+    new THREE.MeshLambertMaterial({ color })
   );
   body.position.y = 0.95;
-  body.castShadow = true;
-  group.add(body);
+  g.add(body);
   const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.26, 10, 8),
-    new THREE.MeshLambertMaterial({ color: skin }),
+    new THREE.SphereGeometry(0.3, 8, 8),
+    new THREE.MeshLambertMaterial({ color: 0xd9a066 })
   );
-  head.position.y = 1.62;
-  head.castShadow = true;
-  group.add(head);
-  const legs = new THREE.Mesh(
-    new THREE.BoxGeometry(0.42, 0.55, 0.3),
-    new THREE.MeshLambertMaterial({ color: pants }),
-  );
-  legs.position.y = 0.28;
-  group.add(legs);
-  return { group, body, head };
+  head.position.y = 1.95;
+  g.add(head);
+  return g;
 }
 
-/** Create the crowd. `game` gives access to the player for fleeing. */
-export function createPedestrians(scene, count) {
-  const peds = [];
-  const roads = CONFIG.world.roads;
-  for (let i = 0; i < count; i++) {
-    const { group } = buildPedestrian();
-    // Start on a sidewalk: beside a road, inside a block edge.
-    const road = roads[Math.floor(Math.random() * roads.length)];
-    const along = (Math.random() * 2 - 1) * 160;
-    const side = Math.random() < 0.5 ? -1 : 1;
-    const vertical = Math.random() < 0.5;
-    const x = vertical ? road + side * 8 : along;
-    const z = vertical ? along : road + side * 8;
-    group.position.set(x, 0, z);
-    scene.add(group);
-    peds.push({
-      group,
-      heading: Math.random() * Math.PI * 2,
-      speed: CONFIG.pedestrians.speed * (0.7 + Math.random() * 0.6),
-      downUntil: 0,
+export function createPedestrians(scene) {
+  const rng = makeRng(4242);
+  const walkers = [];
+  const palette = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c, 0xecf0f1, 0x34495e];
+  for (let i = 0; i < 24; i++) {
+    const bx = CFG.blockCentres[Math.floor(rng() * CFG.blockCentres.length)];
+    const bz = CFG.blockCentres[Math.floor(rng() * CFG.blockCentres.length)];
+    // Walk the sidewalk ring of the block: just inside the block edge.
+    const side = Math.floor(rng() * 4);
+    const off = 15.5;
+    let x = bx, z = bz;
+    if (side === 0) { z = bz - off; x = bx + (rng() * 2 - 1) * off; }
+    if (side === 1) { z = bz + off; x = bx + (rng() * 2 - 1) * off; }
+    if (side === 2) { x = bx - off; z = bz + (rng() * 2 - 1) * off; }
+    if (side === 3) { x = bx + off; z = bz + (rng() * 2 - 1) * off; }
+    const mesh = makeWalker(palette[i % palette.length]);
+    mesh.position.set(x, 0, z);
+    scene.add(mesh);
+    walkers.push({
+      mesh, x, z,
+      heading: rng() * Math.PI * 2,
+      speed: 1.1 + rng() * 0.7,
       fleeUntil: 0,
-      wanderAt: 0,
+      down: false,
+      wanderT: 2 + rng() * 4,
     });
   }
 
+  // Taxi fare: one pedestrian waiting at the beach stand.
+  const fareMesh = makeWalker(0xf1c40f);
+  fareMesh.position.set(CFG.taxiStand.x, 0, CFG.taxiStand.z);
+  scene.add(fareMesh);
+  const fare = { mesh: fareMesh, x: CFG.taxiStand.x, z: CFG.taxiStand.z, waiting: true, inCar: false, dest: null };
+
   return {
-    peds,
-    update(dt, playerPos, playerSpeed, time) {
-      for (const p of peds) {
-        const pos = p.group.position;
-        if (time < p.downUntil) {
-          // Knocked down: lying flat, then gets back up.
-          p.group.rotation.x = -Math.PI / 2;
-          continue;
+    walkers, fare,
+    update(dt, now, playerPos, playerCar, gunshotAt) {
+      for (const w of walkers) {
+        if (w.down) continue;
+        // Flee: a car nearby or a recent gunshot sends them running.
+        const dCar = playerCar
+          ? Math.hypot(w.x - playerCar.group.position.x, w.z - playerCar.group.position.z)
+          : 999;
+        const dFoot = Math.hypot(w.x - playerPos.x, w.z - playerPos.z);
+        const dShot = gunshotAt ? Math.hypot(w.x - gunshotAt.x, w.z - gunshotAt.z) : 999;
+        if (dCar < 9 || dFoot < 3 || dShot < 18) w.fleeUntil = now + 2.5;
+        const fleeing = now < w.fleeUntil;
+        const speed = fleeing ? 3.4 : w.speed;
+        if (fleeing) {
+          const ax = w.x - playerPos.x, az = w.z - playerPos.z;
+          const d = Math.hypot(ax, az) || 1;
+          w.heading = Math.atan2(ax / d, az / d);
+        } else {
+          w.wanderT -= dt;
+          if (w.wanderT <= 0) {
+            w.wanderT = 3 + rng() * 5;
+            w.heading += (rng() - 0.5) * 1.6;
+          }
         }
-        p.group.rotation.x = 0;
-        const dPlayer = playerPos ? dist2d(pos.x, pos.z, playerPos.x, playerPos.z) : 999;
-        if (playerPos && dPlayer < 9 && playerSpeed > 8) {
-          // Flee away from a speeding car or player.
-          p.fleeUntil = time + 1.2;
-        }
-        let heading = p.heading;
-        if (time < p.fleeUntil && playerPos) {
-          heading = Math.atan2(pos.x - playerPos.x, pos.z - playerPos.z);
-          p.heading = heading;
-        } else if (time > p.wanderAt) {
-          p.wanderAt = time + 3 + Math.random() * 5;
-          p.heading += (Math.random() - 0.5) * 1.8;
-          heading = p.heading;
-        }
-        const speed = time < p.fleeUntil ? p.speed * 2.4 : p.speed;
-        pos.x += Math.sin(heading) * speed * dt;
-        pos.z += Math.cos(heading) * speed * dt;
-        // Keep pedestrians inside the city and off the beach road.
-        pos.x = clamp(pos.x, -168, 168);
-        pos.z = clamp(pos.z, -168, 168);
-        p.group.rotation.y = heading;
-        // Little walking bob.
-        p.group.position.y = Math.abs(Math.sin(time * 6 + pos.x)) * 0.06;
+        w.x = clamp(w.x + Math.sin(w.heading) * speed * dt, -170, 170);
+        w.z = clamp(w.z + Math.cos(w.heading) * speed * dt, -170, 170);
+        w.mesh.position.set(w.x, 0, w.z);
+        w.mesh.rotation.y = w.heading;
+        // Simple walk bob.
+        w.mesh.position.y = Math.abs(Math.sin(now * 6 + w.x)) * 0.06;
       }
-    },
-    /** Knock a pedestrian down for a moment. Returns true if one was hit. */
-    knockDown(x, z, radius, time) {
-      for (const p of peds) {
-        const pos = p.group.position;
-        if (time < p.downUntil) continue;
-        if (dist2d(pos.x, pos.z, x, z) < radius) {
-          p.downUntil = time + 2.5;
-          return true;
-        }
-      }
-      return false;
-    },
-    /** Nearest standing pedestrian to a point, within range. */
-    nearest(x, z, range, time) {
-      let best = null;
-      let bestD = range;
-      for (const p of peds) {
-        if (time < p.downUntil) continue;
-        const pos = p.group.position;
-        const d = dist2d(pos.x, pos.z, x, z);
-        if (d < bestD) {
-          bestD = d;
-          best = p;
-        }
-      }
-      return best;
     },
   };
 }

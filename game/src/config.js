@@ -1,158 +1,88 @@
-// Solmar Heat — shared tuning, world layout and story data.
-// Every other module reads its numbers from here so the city, the cars,
-// the police and the missions all agree on the same world.
+// Solmar Heat — shared tuning, layout and story constants.
+// Everything the other modules need to agree on lives here: the road
+// grid, the landmark positions, the economy and the physics numbers.
+export const CFG = {
+  // Road centrelines. The city is a 9x9 block grid; roads run between
+  // the blocks, 10 units wide, so a block centre sits 18 units from the
+  // nearest road centreline on each side.
+  roads: [-162, -126, -90, -54, -18, 18, 54, 90, 126, 162],
+  blockStep: 36,
+  blockCentres: [-144, -108, -72, -36, 0, 36, 72, 108, 144],
+  roadHalfWidth: 5,
+  cityEdge: 180,
+  beachZ: 162,
+  seaZ: 182,
 
-export const CONFIG = {
-  world: {
-    size: 420,
-    roadWidth: 12,
-    roads: [-162, -126, -90, -54, -18, 18, 54, 90, 126, 162],
-    beachZ0: 170,
-    beachZ1: 200,
-    seaZ0: 200,
-    bounds: 205,
-  },
+  // The player car collides as a circle of radius 2. Buildings must keep
+  // their edges at least ~4 units from any road centreline; we clamp them
+  // much tighter (10 units from their block centre = 8 from the road).
+  carRadius: 2.0,
+  playerRadius: 0.6,
+  buildingMaxEdge: 10,
 
-  // Sunset palette: warm low sun, teal sea, sand beach, asphalt roads.
-  colors: {
-    sky: 0xff9e5e,
-    fog: 0xf2a35e,
-    sun: 0xffd9a0,
-    ground: 0x3d7a4a,
-    road: 0x2e2e33,
-    sidewalk: 0x8a8a80,
-    sand: 0xe8d29a,
-    sea: 0x1f7a8c,
-    building: [0xd8b48f, 0xb98a68, 0x9fb4c0, 0xc9a06a, 0x8fa3b8, 0xd0c0a0],
-    roof: [0x7a4a3a, 0x4a5a6a, 0x6a5a4a],
-    car: [0xc23b2e, 0x2e6fc2, 0xe8c832, 0x3aa655, 0x7a4ac2, 0xd8d8d8, 0x222831, 0xe87a2e],
-    gold: 0xd4af37,
-    police: 0x1a2a4a,
-    taxi: 0xf2c200,
-  },
+  spawn: { x: 80, z: -126, heading: 0 },
 
-  landmarks: {
-    marina: { x: -144, z: -144, name: 'Marina Garage' },
-    hotel: { x: 144, z: -144, name: 'Hotel Solmar' },
-    lighthouse: { x: 150, z: 185, name: 'Old Lighthouse' },
-    spray: { x: -54, z: 54, name: 'Spray Shop' },
-    safehouse: { x: 54, z: -54, name: 'Safehouse' },
-    pier: { x: 60, z: 196, name: 'The Pier' },
-  },
-
-  player: {
-    walkSpeed: 6,
-    runSpeed: 10.5,
-    health: 100,
-    radius: 0.7,
-  },
-
-  car: {
-    accel: 15,
-    brake: 34,
-    reverseAccel: 10,
-    maxSpeed: 42,
-    maxReverse: 12,
-    turn: 2.0,
-    drag: 0.35,
-    length: 4.4,
-    width: 2.0,
-  },
-
-  traffic: {
-    count: 14,
-    speed: 11,
-    maxSpeed: 14,
-  },
-
-  pedestrians: {
-    count: 24,
-    speed: 1.6,
-  },
-
-  police: {
-    maxCruisers: 3,
-    chaseSpeed: 46,
-    ramDamage: 6,
-    ramCooldown: 1.0,
-    ramBackoff: 1.5,
-    bustedHold: 2.5,
-    bustedRange: 4,
-    decaySeconds: 25,
-    decayRange: 50,
+  physics: {
+    accel: 14, brake: 26, reverseAccel: 11,
+    maxSpeed: 30, maxReverse: 9,
+    turnRate: 2.1, grip: 6.5,
+    walkSpeed: 4.4, runSpeed: 7.4,
+    wallCut: 0.6, wallCutCooldown: 0.5,
   },
 
   economy: {
-    mission1: 150,
-    mission2: 250,
-    mission3: 350,
-    mission4: 325,
-    packageBonus: 50,
-    taxiFare: 40,
-    vigilanteBonus: 100,
-    shellValue: 10,
-    sprayCost: 75,
-    winTotal: 1075,
+    m1: 150, m2: [50, 100, 100], m3: 400, m4: 275,
+    spray: 75, cash: 25, shell: 10, taxi: 40,
   },
 
-  missions: {
-    courierTime: 240,
-    courierDrops: [
-      { x: 144, z: -144, name: 'Hotel Solmar' },
-      { x: 60, z: 196, name: 'The Pier' },
-      { x: 54, z: -54, name: 'Safehouse' },
-    ],
+  // Landmarks: centre + half extents of the collider box, the mission
+  // marker that sits by it, and the trigger radius around the marker.
+  landmarks: {
+    garage:    { x: -144, z: -144, hw: 9,   hd: 7,   marker: { x: -144, z: -148 }, radius: 12 },
+    hotel:     { x: 144,  z: -144, hw: 8,   hd: 6,   marker: { x: 144,  z: -144 }, radius: 10 },
+    lighthouse:{ x: 150,  z: 185,  hw: 8,   hd: 8,   marker: { x: 150,  z: 176 },  radius: 11 },
+    spray:     { x: -54,  z: 54,   hw: 6,   hd: 6,   marker: { x: -54,  z: 54 },   radius: 11 },
+    safehouse: { x: 54,   z: -54,  hw: 5.5, hd: 5.5, marker: { x: 54,   z: -54 },  radius: 10 },
+    pier:      { x: 60,   z: 202,  hw: 16,  hd: 14,  marker: { x: 60,   z: 190 },  radius: 10 },
   },
+  goldCar: { x: 126, z: -144 },
+  taxiStand: { x: 100, z: 170 },
 
-  shells: [
-    { x: -120, z: 178 }, { x: -40, z: 182 }, { x: 20, z: 176 },
-    { x: 90, z: 184 }, { x: 140, z: 178 }, { x: -160, z: 186 },
-    { x: -18, z: 120 }, { x: 126, z: 18 }, { x: -90, z: -126 },
-    { x: 162, z: 90 },
+  missions: [
+    { title: 'Hot Wheels',      text: 'Steal a car and deliver it to the Marina Garage' },
+    { title: 'Sunset Courier',  text: 'Deliver 3 packages before the timer runs out' },
+    { title: 'The Heat',        text: 'Lose the cops, then reach the Safehouse' },
+    { title: "Marlin's Debt",   text: "Steal the gold Marlin GT, deliver it to the Old Lighthouse, then escape home" },
   ],
+  courierSeconds: 240,
+
+  colors: {
+    sky: 0xff9a56, fog: 0xf7a56b, sun: 0xffd27a,
+    sea: 0x1d6f8e, sand: 0xd9b380, asphalt: 0x2b2b31,
+    sidewalk: 0x8a8a86, grass: 0x5d7a4a,
+    building: [0xc96f4a, 0x4a7a9e, 0x9e8a5a, 0x7a5a8a, 0x5a8a6a, 0xb0a090, 0x8a6a4a, 0x6a7a8a],
+    car: [0xc0392b, 0x2471a3, 0xf1c40f, 0x7d3c98, 0x16a085, 0xe67e22, 0x2c3e50, 0xbdc3c7],
+    gold: 0xd4af37,
+  },
 };
 
-/** Clamp a number into [min, max]. */
-export function clamp(v, min, max) {
-  return v < min ? min : v > max ? max : v;
-}
-
-/** Linear interpolation. */
-export function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-
-/** 2D distance on the ground plane. */
-export function dist2d(ax, az, bx, bz) {
-  const dx = ax - bx;
-  const dz = az - bz;
-  return Math.sqrt(dx * dx + dz * dz);
-}
-
-/** Wrap an angle into [-PI, PI]. */
-export function wrapAngle(a) {
-  while (a > Math.PI) a -= Math.PI * 2;
-  while (a < -Math.PI) a += Math.PI * 2;
-  return a;
-}
-
-/** Small deterministic RNG (mulberry32) for staged shots. */
-export function mulberry32(seed) {
-  let s = seed >>> 0;
-  return function next() {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+// Deterministic PRNG (mulberry32) so the city layout is identical on
+// every load — screenshots, smoke tests and playthroughs all see the
+// same streets.
+export function makeRng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-/** Pick a road centreline nearest to a value. */
-export function nearestRoad(v) {
-  const roads = CONFIG.world.roads;
-  let best = roads[0];
-  for (const r of roads) {
-    if (Math.abs(r - v) < Math.abs(best - v)) best = r;
-  }
-  return best;
+export function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+export function dist2(ax, az, bx, bz) { const dx = ax - bx, dz = az - bz; return dx * dx + dz * dz; }
+export function wrapAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
 }
