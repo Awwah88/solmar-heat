@@ -1,235 +1,168 @@
-// Story missions plus the taxi side job. The reward counter is the single
-// source of truth for mission money: setDone(list) recomputes it, and
-// nothing else writes missions.done directly, so save/load can never
-// double-pay a mission.
-import {
-  GOLD_GT,
-  LANDMARKS,
-  MISSION_DEFS,
-  MISSION_TIME,
-  PACKAGES,
-  TAXI_FARE,
-  TAXI_STAND,
-  WIN_BONUS,
-  dist2d,
-} from "./config.js";
+// Story missions and the taxi side job for Solmar Heat.
+// Mission progress is only ever changed through setDone(), which keeps the
+// earned-rewards counter in sync (never assign .done directly).
 
-function lm(id) {
-  return LANDMARKS.find((l) => l.id === id);
+import { LANDMARKS, MISSIONS, PACKAGES, TUNING } from './config.js';
+
+function marker(id) {
+  const lm = LANDMARKS.find((l) => l.id === id);
+  return lm ? lm.marker : [0, 0];
 }
 
 export class Missions {
-  constructor(game) {
-    this.game = game;
-    this.index = 0;
-    this.done = [false, false, false, false];
-    this.earned = 0;
-    this.bonus = 0;
+  constructor(hooks) {
+    this.hooks = hooks; // {addMoney, setWanted, grantPistol, toast, sound, onWin}
+    this.list = MISSIONS.map((m) => ({ ...m, done: false }));
+    this.current = this.list[0];
+    this.stage = 0;
     this.timer = 0;
-    this.packageIdx = 0;
-    this.stage = "go";
-    this.taxi = { active: false, dest: null, timer: 0, from: null };
-    this._started = [false, false, false, false];
+    this.delivered = new Set();
+    this.earned = 0;
+    this.taxi = { active: false, stage: 0, pickup: null, dropoff: null, reward: 0, timer: 0, ped: null };
   }
 
-  get current() {
-    return this.index < MISSION_DEFS.length ? MISSION_DEFS[this.index] : null;
+  // The only way to change .done: pass the full list of completed mission ids.
+  setDone(doneIds) {
+    for (const m of this.list) m.done = doneIds.includes(m.id);
+    this.earned = this.list.filter((m) => m.done).reduce((s, m) => s + m.reward, 0);
+    this.current = this.list.find((m) => !m.done) || null;
   }
 
-  get allDone() {
-    return this.done.every(Boolean);
+  get doneIds() {
+    return this.list.filter((m) => m.done).map((m) => m.id);
   }
 
-  _missionSum() {
-    let s = 0;
-    for (let i = 0; i < 4; i++) if (this.done[i]) s += MISSION_DEFS[i].reward;
-    return s;
+  get doneCount() {
+    return this.list.filter((m) => m.done).length;
   }
 
-  setDone(list) {
-    this.done = [!!list[0], !!list[1], !!list[2], !!list[3]];
-    this.earned = this._missionSum() + this.bonus;
-    this.index = this.done.findIndex((d) => !d);
-    if (this.index < 0) this.index = 4;
-  }
-
-  addBonus(n) {
-    this.bonus += n;
-    this.earned = this._missionSum() + this.bonus;
-  }
-
-  setCurrent(i) {
-    this.index = i;
-    this.stage = "go";
-    this.packageIdx = 0;
-    this.timer = i === 1 ? MISSION_TIME : 0;
-    this._started[i] = false;
-    this._begin(i);
-  }
-
-  _begin(i) {
-    if (this._started[i]) return;
-    this._started[i] = true;
-    if (i === 1) {
-      this.timer = MISSION_TIME;
-      this.packageIdx = 0;
+  startMission(m) {
+    this.stage = 0;
+    if (m.id === 2) {
+      this.timer = m.time;
+      this.delivered = new Set();
     }
-    if (i === 2) {
-      this.game.setWanted(3);
-      this.stage = "lose-heat";
+    if (m.id === 3) {
+      this.hooks.setWanted(3);
+      this.hooks.toast('The heat is on — 3 stars. Lose them, then reach the Safehouse.');
     }
-    if (i === 3) {
-      this.stage = "steal";
+    if (m.id === 4) {
+      this.hooks.toast('Steal the gold Marlin GT at Hotel Solmar.');
     }
   }
 
-  // Where the HUD beacon should point right now (or null).
-  marker() {
-    const g = this.game;
-    if (this.taxi.active && this.taxi.dest) return this.taxi.dest;
-    if (this.index === 0) return { x: 154, z: -126 };
-    if (this.index === 1) return PACKAGES[this.packageIdx] ?? null;
-    if (this.index === 2) {
-      return this.stage === "lose-heat" ? null : lm("safehouse");
-    }
-    if (this.index === 3) {
-      if (this.stage === "steal") return GOLD_GT;
-      if (this.stage === "deliver") return lm("lighthouse");
-      return lm("safehouse");
-    }
-    return null;
+  completeCurrent() {
+    const m = this.current;
+    if (!m) return;
+    this.hooks.addMoney(m.reward);
+    this.hooks.sound('missionDone');
+    this.hooks.toast(`${m.title} complete — +$${m.reward}`);
+    this.setDone([...this.doneIds, m.id]);
+    if (m.id === 2) this.hooks.grantPistol();
+    if (this.current) this.startMission(this.current);
+    else this.hooks.onWin();
   }
 
   objective() {
-    if (this.taxi.active && this.taxi.dest) {
-      return `Taxi fare: drop the passenger at ${this.taxi.dest.name ?? "the marker"} (+$${TAXI_FARE})`;
+    const m = this.current;
+    if (!m) return 'Debt paid — you are a Solmar Legend.';
+    if (m.id === 1) return 'Steal the red sedan by the Marina Garage';
+    if (m.id === 2) {
+      const left = Math.max(0, Math.ceil(this.timer));
+      const mm = Math.floor(left / 60);
+      const ss = String(left % 60).padStart(2, '0');
+      return `Deliver packages — ${this.delivered.size}/3  (${mm}:${ss})`;
     }
-    const c = this.current;
-    if (!c) return "Debt paid — you are a Solmar Legend.";
-    if (this.index === 0) return `M1 ${c.title} — ${c.blurb}`;
-    if (this.index === 1) {
-      return `M2 ${c.title} — package ${this.packageIdx + 1} of 3 (${Math.ceil(this.timer)}s left)`;
+    if (m.id === 3) return 'Lose the heat, then reach the Safehouse';
+    if (m.id === 4) {
+      if (this.stage === 0) return 'Steal the gold Marlin GT at Hotel Solmar';
+      if (this.stage === 1) return 'Deliver the Marlin GT to the Old Lighthouse — stay under 4 stars';
+      return 'Escape to the Safehouse';
     }
-    if (this.index === 2) {
-      return this.stage === "lose-heat"
-        ? `M3 ${c.title} — lose the heat (0 stars), then reach the Safehouse`
-        : `M3 ${c.title} — reach the Safehouse`;
-    }
-    if (this.index === 3) {
-      if (this.stage === "steal") return `M4 ${c.title} — steal the gold Marlin GT at Hotel Solmar`;
-      if (this.stage === "deliver") return `M4 ${c.title} — deliver the GT to the Old Lighthouse (stay under 4 stars)`;
-      return `M4 ${c.title} — escape to the Safehouse`;
-    }
-    return c.blurb;
+    return m.brief;
   }
 
-  _complete(i) {
-    const next = this.done.slice();
-    next[i] = true;
-    this.setDone(next);
-    this.game.onMissionComplete(i);
-    if (i === 1) this.game.unlockPistol();
-    if (this.allDone) {
-      this.addBonus(WIN_BONUS);
-      this.game.onWin();
-    }
+  startTaxi(ped, from, to, reward) {
+    this.taxi = { active: true, stage: 0, pickup: from, dropoff: to, reward, timer: 150, ped };
+    this.hooks.toast(`Taxi fare — pick up the passenger, then drop them at ${to.name}.`);
   }
 
-  update(dt, px, pz, inCar, wanted) {
-    if (this.index >= 4) return;
-    this._begin(this.index);
-    // Taxi runs alongside the story.
-    if (this.taxi.active) {
-      this.taxi.timer -= dt;
-      if (this.taxi.dest && dist2d(px, pz, this.taxi.dest.x, this.taxi.dest.z) < 8) {
-        this.taxi.active = false;
-        this.addBonus(TAXI_FARE);
-        this.game.toast(`Fare complete +$${TAXI_FARE}`);
-        this.game.audio.jingle();
-      } else if (this.taxi.timer <= 0) {
-        this.taxi.active = false;
-        this.game.toast("Taxi fare timed out");
-      }
-    }
-    if (this.index === 0) {
-      if (this.game.playerCarIsSedan) this._complete(0);
-      return;
-    }
-    if (this.index === 1) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = MISSION_TIME;
-        this.packageIdx = 0;
-        this.game.toast("Out of time — packages reset, try again");
-        return;
-      }
-      const pkg = PACKAGES[this.packageIdx];
-      if (pkg && dist2d(px, pz, pkg.x, pkg.z) < 7) {
-        this.packageIdx++;
-        this.game.audio.pickup();
-        this.game.toast(`Package ${this.packageIdx} of 3 delivered`);
-        if (this.packageIdx >= PACKAGES.length) this._complete(1);
-      }
-      return;
-    }
-    if (this.index === 2) {
-      if (this.stage === "lose-heat" && wanted === 0) {
-        this.stage = "safehouse";
-        this.game.toast("Heat lost — now reach the Safehouse");
-      } else if (this.stage === "safehouse") {
-        const s = lm("safehouse");
-        if (dist2d(px, pz, s.x, s.z) < 9) this._complete(2);
-      }
-      return;
-    }
-    if (this.index === 3) {
-      if (this.stage === "steal" && this.game.playerCarIsGold) {
-        this.stage = "deliver";
-        this.game.toast("GT stolen — deliver it to the Old Lighthouse");
-        return;
-      }
-      if (this.stage === "deliver") {
-        const lh = lm("lighthouse");
-        if (dist2d(px, pz, lh.x, lh.z) < 9) {
-          if (wanted >= 4) {
-            this.game.toast("Too hot — lose a star before the drop");
-          } else {
-            this.stage = "escape";
-            this.game.toast("GT delivered — escape to the Safehouse");
-          }
+  cancelTaxi(reason) {
+    if (!this.taxi.active) return;
+    this.taxi.active = false;
+    if (this.taxi.ped) this.taxi.ped.state = 'walk';
+    this.hooks.toast(reason || 'Taxi fare cancelled.');
+  }
+
+  update(dt, w) {
+    // w: {x, z, inCar, car, wanted, redSedan, goldGt}
+    const m = this.current;
+    if (m) {
+      if (m.id === 1) {
+        if (w.inCar && w.car === w.redSedan) this.completeCurrent();
+      } else if (m.id === 2) {
+        this.timer -= dt;
+        if (this.timer <= 0) {
+          this.timer = m.time;
+          this.delivered = new Set();
+          this.hooks.toast('Time up — the packages reset. Try again.');
+        } else {
+          PACKAGES.forEach(([px, pz], i) => {
+            if (this.delivered.has(i)) return;
+            const d = Math.hypot(w.x - px, w.z - pz);
+            if (d < 5) {
+              this.delivered.add(i);
+              this.hooks.toast(`Package ${this.delivered.size}/3 delivered`);
+              this.hooks.sound('pickup');
+              if (this.delivered.size === 3) this.completeCurrent();
+            }
+          });
         }
-        return;
-      }
-      if (this.stage === "escape") {
-        const s = lm("safehouse");
-        if (dist2d(px, pz, s.x, s.z) < 9) this._complete(3);
+      } else if (m.id === 3) {
+        const [sx, sz] = marker('safehouse');
+        if (w.wanted === 0 && Math.hypot(w.x - sx, w.z - sz) < 8) this.completeCurrent();
+      } else if (m.id === 4) {
+        if (this.stage === 0) {
+          if (w.inCar && w.car === w.goldGt) {
+            this.stage = 1;
+            this.hooks.toast('Got the Marlin GT — take it to the Old Lighthouse, under 4 stars.');
+          }
+        } else if (this.stage === 1) {
+          const [lx, lz] = marker('lighthouse');
+          if (w.inCar && w.car === w.goldGt && Math.hypot(w.x - lx, w.z - lz) < 9) {
+            if (w.wanted < 4) {
+              this.stage = 2;
+              this.hooks.toast('Drop made. Now escape to the Safehouse.');
+            } else {
+              this.hooks.toast('Too hot — get under 4 stars before the drop.');
+            }
+          }
+        } else if (this.stage === 2) {
+          const [sx, sz] = marker('safehouse');
+          if (Math.hypot(w.x - sx, w.z - sz) < 8) this.completeCurrent();
+        }
       }
     }
-  }
-
-  tryStartTaxi(px, pz) {
-    if (this.taxi.active) return false;
-    if (dist2d(px, pz, TAXI_STAND.x, TAXI_STAND.z) > 9) return false;
-    const choices = [lm("garage"), lm("hotel"), lm("lighthouse"), lm("pier")];
-    const dest = choices[Math.floor(Math.random() * choices.length)];
-    this.taxi = { active: true, dest, timer: 150, from: { ...TAXI_STAND } };
-    this.game.toast(`Taxi fare: take the passenger to ${dest.name}`);
-    return true;
-  }
-
-  taxiStand() {
-    return TAXI_STAND;
-  }
-
-  reset() {
-    this.index = 0;
-    this.done = [false, false, false, false];
-    this.earned = 0;
-    this.bonus = 0;
-    this.timer = 0;
-    this.packageIdx = 0;
-    this.stage = "go";
-    this.taxi = { active: false, dest: null, timer: 0, from: null };
-    this._started = [false, false, false, false];
+    // Taxi fare.
+    const t = this.taxi;
+    if (t.active) {
+      t.timer -= dt;
+      if (t.timer <= 0) {
+        this.cancelTaxi('Taxi fare expired.');
+      } else if (t.stage === 0) {
+        if (w.inCar && Math.hypot(w.x - t.pickup[0], w.z - t.pickup[1]) < 5) {
+          t.stage = 1;
+          if (t.ped) t.ped.group.visible = false;
+          this.hooks.toast(`Passenger aboard — drop them at ${t.dropoff.name}.`);
+        }
+      } else if (t.stage === 1) {
+        if (Math.hypot(w.x - t.dropoff.marker[0], w.z - t.dropoff.marker[1]) < 8) {
+          this.hooks.addMoney(t.reward);
+          this.hooks.sound('pickup');
+          this.hooks.toast(`Fare complete — +$${t.reward}`);
+          this.taxi.active = false;
+        }
+      }
+    }
   }
 }

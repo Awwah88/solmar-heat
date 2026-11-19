@@ -1,73 +1,108 @@
-// Solmar Heat — shared constants, coordinates and small helpers.
-// The city is a 9x9 grid of blocks. Roads run on the CENTRES lines (every
-// 36 units); block centres sit halfway between them. All gameplay positions
-// are roadside markers so missions never ask the player to drive into a wall.
+// Solmar Heat — world constants, story data and tuning (fresh for Round 15).
+// The city is a 36u grid: roads run on centrelines, blocks sit between them.
 
-export const WORLD_HALF = 180;
-export const ROAD_CENTRES = [-162, -126, -90, -54, -18, 18, 54, 90, 126, 162];
-export const BLOCK_CENTRES = [-144, -108, -72, -36, 0, 36, 72, 108, 144];
-export const ROAD_WIDTH = 14;
+export const PITCH = 36;
+export const ROAD_HALF = 5;
+export const ROADS = [-162, -126, -90, -54, -18, 18, 54, 90, 126, 162];
+export const BLOCKS = [-144, -108, -72, -36, 0, 36, 72, 108, 144];
+export const CITY_HALF = 180;
+export const MAX_BUILD_OFFSET = 10; // building collider edge stays within 10u of its block centre
 
-export const SPAWN = { x: 90, z: -144, heading: 0 };
-
-export const COLORS = {
-  sky: 0x8ec3e8,
-  fog: 0x9fc4de,
-  ground: 0x77894f,
-  sand: 0xdcc78f,
-  sea: 0x1e6fb0,
-  road: 0x2c2c31,
-  roadLine: 0xd8c25a,
-  sidewalk: 0x9aa0a8,
-  building: [0xb5654a, 0x4a7a9e, 0x9e8a4a, 0x6a5a8e, 0xa85a6e, 0x5a8e6a, 0x8e6a3a, 0x3a6a8e],
-  roof: 0x3a3f46,
-  palmTrunk: 0x7a5a34,
-  palmTop: 0x3f8e4a,
-  lamp: 0x2a2e33,
+export const STORY = {
+  hero: 'Dana "Dash" Reyes',
+  debt: 400,
+  creditor: 'Marlin Club',
+  city: 'Solmar Bay',
 };
 
+export const SPAWN = { x: 90, z: -144, heading: Math.PI };
+
+// Landmarks: the building sits in a block; the marker is the roadside point
+// missions and the playthrough navigate to.
 export const LANDMARKS = [
-  { id: "garage", name: "Marina Garage", x: 162, z: -126, block: [144, -144], tint: 0xd86a2a },
-  { id: "hotel", name: "Hotel Solmar", x: 54, z: -18, block: [36, 0], tint: 0x2a9ed8 },
-  { id: "lighthouse", name: "Old Lighthouse", x: -162, z: 126, block: [-144, 144], tint: 0xf2e6c8 },
-  { id: "spray", name: "Spray Shop", x: -162, z: 54, block: [-144, 36], tint: 0x37d67a },
-  { id: "safehouse", name: "Safehouse", x: -162, z: 90, block: [-144, 108], tint: 0x8e6ad8 },
-  { id: "pier", name: "The Pier", x: 162, z: 126, block: [144, 144], tint: 0xd8a52a },
+  { id: 'garage', name: 'Marina Garage', block: [144, -144], marker: [162, -126], color: 0x2e6f8e, tall: 10 },
+  { id: 'hotel', name: 'Hotel Solmar', block: [36, -36], marker: [54, -18], color: 0xc9a227, tall: 34 },
+  { id: 'lighthouse', name: 'Old Lighthouse', block: [-144, 144], marker: [-162, 126], color: 0xe8e0cc, tall: 26 },
+  { id: 'spray', name: 'Spray Shop', block: [-144, 36], marker: [-162, 54], color: 0x7a4fd0, tall: 8 },
+  { id: 'safehouse', name: 'Safehouse', block: [-144, 72], marker: [-162, 90], color: 0x3f7d4e, tall: 9 },
+  { id: 'pier', name: 'The Pier', block: [144, 108], marker: [162, 126], color: 0x8a6b46, tall: 6 },
 ];
 
-export const RED_SEDAN = { x: 154, z: -126 };
-export const GOLD_GT = { x: 46, z: -18 };
+export const PARKED = {
+  redSedan: { x: 154, z: -126, heading: Math.PI / 2, color: 0xc22a2a, name: 'Red Sedan' },
+  goldGt: { x: 46, z: -18, heading: -Math.PI / 2, color: 0xd8a928, name: 'Marlin GT' },
+};
+
 export const PACKAGES = [
-  { x: 54, z: 90 },
-  { x: -54, z: 162 },
-  { x: 126, z: 18 },
+  [54, 90],
+  [-54, 162],
+  [126, 18],
 ];
-export const CASH_PICKUPS = [
-  { x: 90, z: 18 },
-  { x: -90, z: -54 },
-  { x: 18, z: -90 },
-];
-export const PARKED_CARS = [
-  { x: 154, z: -126, color: 0xc22a1e, sedan: true },
-  { x: -18, z: 126, color: 0x3a6ad8, sedan: false },
-  { x: 126, z: -54, color: 0xd8d8d8, sedan: false },
-  { x: -126, z: 18, color: 0x2ad8a5, sedan: false },
-  { x: 54, z: 126, color: 0xd8a52a, sedan: false },
-];
-export const TAXI_STAND = { x: 18, z: 54 };
 
-export const MISSION_DEFS = [
-  { id: "m1", title: "Hot Wheels", reward: 150, blurb: "Steal the red sedan parked at Marina Garage." },
-  { id: "m2", title: "Sunset Courier", reward: 250, blurb: "Deliver 3 packages around Solmar Bay in 240 seconds." },
-  { id: "m3", title: "The Heat", reward: 400, blurb: "Lose the 3-star manhunt, then slip to the Safehouse." },
-  { id: "m4", title: "Marlin's Debt", reward: 300, blurb: "Steal the gold Marlin GT, drop it at the Old Lighthouse under 4 stars, then vanish." },
+export const CASH_SPOTS = [
+  [18, -90], [-90, 18], [90, 126], [-126, -54],
+  [54, -90], [-18, 90], [126, -54], [-90, -126],
 ];
-export const DEBT = 400;
-export const WIN_BONUS = 25;
-export const SPRAY_COST = 75;
-export const TAXI_FARE = 30;
-export const CASH_VALUE = 25;
-export const MISSION_TIME = 240;
+
+export const HEALTH_SPOTS = [
+  [-18, -54], [90, 54], [-126, 126], [18, 126],
+];
+
+export const TAXI_RANKS = [
+  [54, -90],
+  [-90, 54],
+  [126, 90],
+];
+
+export const MISSIONS = [
+  { id: 1, title: 'Hot Wheels', reward: 150, brief: 'Steal the red sedan parked by the Marina Garage.' },
+  { id: 2, title: 'Sunset Courier', reward: 250, brief: 'Deliver 3 packages around Solmar Bay before the timer runs out.', time: 240 },
+  { id: 3, title: 'The Heat', reward: 400, brief: 'You are at 3 stars. Lose the heat, then reach the Safehouse.' },
+  { id: 4, title: "Marlin's Debt", reward: 300, brief: 'Steal the gold Marlin GT at Hotel Solmar, drop it at the Old Lighthouse under 4 stars, then escape to the Safehouse.' },
+];
+
+export const TUNING = {
+  walkSpeed: 7,
+  runSpeed: 10,
+  carAccel: 16,
+  carBrake: 26,
+  carMaxSpeed: 26,
+  carReverseMax: 9,
+  carTurn: 1.9,
+  carGrip: 0.92,
+  playerRadius: 0.9,
+  carRadius: 2.1,
+  sprayCost: 75,
+  sprayRadius: 7,
+  bustedFine: 75,
+  wastedFine: 75,
+  cashPickup: 25,
+  healthPickup: 30,
+  taxiBase: 50,
+  maxHealth: 100,
+  maxWanted: 5,
+  policeTopSpeed: 17,
+  trafficSpeed: 10,
+  punchDamage: 34,
+  pistolDamage: 55,
+  punchRange: 2.6,
+  shootRange: 70,
+};
+
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function pick(rng, arr) {
+  return arr[Math.floor(rng() * arr.length)];
+}
 
 export function clamp(v, lo, hi) {
   return v < lo ? lo : v > hi ? hi : v;
@@ -79,34 +114,8 @@ export function wrapAngle(a) {
   return a;
 }
 
-export function dist2d(ax, az, bx, bz) {
+export function dist2(ax, az, bx, bz) {
   const dx = ax - bx;
   const dz = az - bz;
-  return Math.sqrt(dx * dx + dz * dz);
-}
-
-// Forward vector for a heading: heading 0 faces +z, increasing turns left.
-export function forwardOf(heading) {
-  return { x: Math.sin(heading), z: Math.cos(heading) };
-}
-
-// On-foot right vector for a heading.
-export function rightOf(heading) {
-  return { x: -Math.cos(heading), z: Math.sin(heading) };
-}
-
-// Deterministic PRNG so a ?seed= renders the same city every time.
-export function makeRng(seed) {
-  let s = (seed >>> 0) || 1;
-  return () => {
-    s |= 0;
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-export function pick(rng, arr) {
-  return arr[Math.floor(rng() * arr.length)];
+  return dx * dx + dz * dz;
 }
