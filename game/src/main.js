@@ -1,30 +1,25 @@
-// Solmar Heat — bootstrap: build the Game, expose it for the tools, stage
-// screenshots, and show a readable overlay if the game fails to start.
-
+// Solmar Heat — bootstrap. Creates the Game, exposes it as
+// window.__solmarHeat for the smoke/screenshot/playtest drivers, applies
+// any ?shot= staging, and shows a readable error overlay if a module
+// fails to load so a blank page never hides the cause.
 import { Game } from './world.js';
-import { stageShot } from './shots.js';
+import { applyShot } from './shots.js';
 
-const overlay = document.getElementById('error-overlay');
-function showError(msg) {
-  if (!overlay) return;
-  overlay.style.display = 'block';
-  overlay.textContent = `Solmar Heat failed to start: ${msg}`;
-}
-window.addEventListener('error', (e) => showError(e.message || 'unknown error'));
-window.addEventListener('unhandledrejection', (e) => showError(String(e.reason || 'unhandled rejection')));
-
-let game = null;
-try {
-  const mount = document.getElementById('game');
-  game = new Game(mount);
-  window.__solmarHeat = game;
-  const params = new URLSearchParams(window.location.search);
-  const shot = params.get('shot');
-  if (shot) {
-    // Let the first frames render, then stage the requested scene.
-    setTimeout(() => stageShot(game, shot), 600);
+window.addEventListener('error', (e) => {
+  const box = document.getElementById('error-box');
+  if (box) {
+    box.style.display = 'block';
+    box.textContent = `Error: ${e.message} (${e.filename || ''}:${e.lineno || ''})`;
   }
-} catch (err) {
-  showError(err && err.message ? err.message : String(err));
-  throw err;
-}
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const box = document.getElementById('error-box');
+  if (box) {
+    box.style.display = 'block';
+    box.textContent = `Error: ${e.reason && e.reason.message ? e.reason.message : e.reason}`;
+  }
+});
+
+const game = new Game();
+window.__solmarHeat = game;
+applyShot(game);

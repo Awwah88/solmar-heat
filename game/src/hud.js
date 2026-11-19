@@ -1,195 +1,127 @@
-// HUD, minimap and menus for Solmar Heat. All DOM lives in index.html;
-// this module only reads and updates it.
+// Solmar Heat — HUD, minimap and menus. Draws money, health, wanted
+// stars, the mission objective and dots, and — new in R16 — the doubloon
+// counter, the taxi fare streak and the M5 objective line. The minimap is
+// a live canvas: roads, blocks, landmarks, the player, police, traffic
+// and the current mission beacon. Menus: start, pause, end (win/busted)
+// and the downed overlay.
+import { ROADS, BLOCKS } from './config.js';
 
-import { BLOCKS, ROADS } from './config.js';
-
-export class HUD {
-  constructor(doc) {
-    this.doc = doc;
+export class Hud {
+  constructor(game) {
+    this.game = game;
     this.el = {};
-    for (const id of ['hud', 'money', 'score', 'health-fill', 'health-text', 'stars', 'objective', 'speed', 'timer', 'toast', 'hint', 'menu', 'start-btn', 'continue-btn', 'pause-screen', 'resume-btn', 'pause-restart-btn', 'end-screen', 'end-title', 'end-text', 'end-stats', 'end-btn', 'down-overlay', 'down-text']) {
-      this.el[id] = doc.getElementById(id);
+    for (const id of ['hud', 'money', 'health-fill', 'health-num', 'stars', 'objective', 'mission-dots', 'doubloons', 'fare-streak', 'timer', 'toast', 'menu', 'start-btn', 'continue-btn', 'end', 'end-title', 'end-sub', 'end-btn', 'down', 'down-text', 'pause', 'resume-btn', 'restart-btn', 'minimap']) {
+      this.el[id] = document.getElementById(id);
     }
-    this.minimap = doc.getElementById('minimap');
-    this.mm = this.minimap ? this.minimap.getContext('2d') : null;
-    this._toastTimer = null;
-    this.onStart = null;
-    this.onContinue = null;
-    this.onResume = null;
-    this.onRestart = null;
-    this.onEnd = null;
-    if (this.el['start-btn']) this.el['start-btn'].addEventListener('click', () => this.onStart && this.onStart());
-    if (this.el['continue-btn']) this.el['continue-btn'].addEventListener('click', () => this.onContinue && this.onContinue());
-    if (this.el['resume-btn']) this.el['resume-btn'].addEventListener('click', () => this.onResume && this.onResume());
-    if (this.el['pause-restart-btn']) this.el['pause-restart-btn'].addEventListener('click', () => this.onRestart && this.onRestart());
-    if (this.el['end-btn']) this.el['end-btn'].addEventListener('click', () => this.onEnd && this.onEnd());
+    this.mapCtx = this.el.minimap ? this.el.minimap.getContext('2d') : null;
+    this.toastTimer = 0;
+    if (this.el['start-btn']) this.el['start-btn'].addEventListener('click', () => this.game.startNewGame());
+    if (this.el['continue-btn']) this.el['continue-btn'].addEventListener('click', () => this.game.continueGame());
+    if (this.el['end-btn']) this.el['end-btn'].addEventListener('click', () => this.game.showMenu());
+    if (this.el['resume-btn']) this.el['resume-btn'].addEventListener('click', () => this.game.resume());
+    if (this.el['restart-btn']) this.el['restart-btn'].addEventListener('click', () => this.game.startNewGame());
   }
-
-  _show(id, on) {
-    const e = this.el[id];
-    if (e) e.style.display = on ? '' : 'none';
+  showMenu() {
+    this.el.menu.style.display = 'flex';
+    this.el.hud.style.display = 'none';
+    this.el.end.style.display = 'none';
+    this.el.pause.style.display = 'none';
   }
-
-  showDown(kind, fine) {
-    if (this.el['down-text']) this.el['down-text'].textContent = `${kind} — $${fine} fine`;
-    if (this.el['down-overlay']) this.el['down-overlay'].style.display = '';
-  }
-
-  hideDown() {
-    if (this.el['down-overlay']) this.el['down-overlay'].style.display = 'none';
-  }
-
-  showMenu(hasSave) {
-    this._show('hud', false);
-    this._show('menu', true);
-    this._show('pause-screen', false);
-    this._show('end-screen', false);
-    if (this.el['continue-btn']) this.el['continue-btn'].style.display = hasSave ? '' : 'none';
-  }
-
   showPlaying() {
-    this._show('hud', true);
-    this._show('menu', false);
-    this._show('pause-screen', false);
-    this._show('end-screen', false);
+    this.el.menu.style.display = 'none';
+    this.el.hud.style.display = 'block';
+    this.el.end.style.display = 'none';
+    this.el.pause.style.display = 'none';
   }
-
-  showPaused() {
-    this._show('pause-screen', true);
+  showPause() {
+    this.el.pause.style.display = 'flex';
   }
-
-  showEnd(kind, stats) {
-    this._show('hud', false);
-    this._show('end-screen', true);
-    const titles = { win: 'SOLMAR LEGEND', busted: 'BUSTED', wasted: 'WASTED' };
-    const texts = {
-      win: 'Debt paid in full. Dana "Dash" Reyes is free.',
-      busted: 'The Solmar PD caught up with you. The Marlin Club is not pleased.',
-      wasted: 'You blacked out on the streets of Solmar Bay.',
-    };
-    if (this.el['end-title']) this.el['end-title'].textContent = titles[kind] || kind.toUpperCase();
-    if (this.el['end-text']) this.el['end-text'].textContent = texts[kind] || '';
-    if (this.el['end-stats']) {
-      this.el['end-stats'].textContent = `$${stats.money} in the pocket · ${stats.missions}/4 missions · ${stats.time}`;
-    }
+  hidePause() { this.el.pause.style.display = 'none'; }
+  showEnd(kind, title, sub) {
+    this.el.end.style.display = 'flex';
+    this.el['end-title'].textContent = title;
+    this.el['end-sub'].textContent = sub;
+    this.el.end.dataset.kind = kind;
   }
-
+  showDown(text) {
+    this.el.down.style.display = 'flex';
+    this.el['down-text'].textContent = text;
+  }
+  hideDown() { this.el.down.style.display = 'none'; }
   toast(msg) {
-    const t = this.el.toast;
-    if (!t) return;
-    t.textContent = msg;
-    t.style.opacity = '1';
-    clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => { t.style.opacity = '0'; }, 3600);
+    if (!this.el.toast) return;
+    this.el.toast.textContent = msg;
+    this.el.toast.style.opacity = '1';
+    this.toastTimer = 3.2;
   }
-
-  update(g) {
-    if (this.el.money) this.el.money.textContent = `$${Math.floor(g.money)}`;
-    if (this.el.score) this.el.score.textContent = `SCORE ${g.score}`;
-    const hp = Math.max(0, Math.ceil(g.health));
-    if (this.el['health-fill']) this.el['health-fill'].style.width = `${hp}%`;
-    if (this.el['health-text']) this.el['health-text'].textContent = `${hp}`;
-    if (this.el.stars) {
-      this.el.stars.textContent = '★'.repeat(g.police.wanted) + '☆'.repeat(5 - g.police.wanted);
-      this.el.stars.style.color = g.police.wanted > 0 ? '#ffd23e' : '#888';
+  update(dt) {
+    const g = this.game;
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.el.toast.style.opacity = '0';
     }
-    if (this.el.objective) {
-      const m = g.missions.current;
-      const obj = g.missions.objective();
-      this.el.objective.textContent = m ? `M${m.id} ${m.title} ($${m.reward}) — ${obj}` : obj;
-    }
-    if (this.el.speed) {
-      this.el.speed.textContent = g.player.car ? `${Math.round(Math.abs(g.player.car.speed) * 3.6)} km/h` : 'ON FOOT';
-    }
-    if (this.el.timer) {
-      const m = g.missions.current;
-      this.el.timer.style.display = m && m.id === 2 ? '' : 'none';
-      if (m && m.id === 2) {
-        const left = Math.max(0, Math.ceil(g.missions.timer));
-        this.el.timer.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
-      }
-    }
-    this._drawMinimap(g);
+    if (g.state !== 'playing' && g.state !== 'end') return;
+    this.el.money.textContent = `$${Math.floor(g.money)}`;
+    this.el['health-fill'].style.width = `${Math.max(0, Math.min(100, g.health))}%`;
+    this.el['health-num'].textContent = `${Math.ceil(g.health)}`;
+    this.el.stars.textContent = '★'.repeat(g.police.wanted) + '☆'.repeat(5 - g.police.wanted);
+    this.el.stars.style.color = g.police.wanted > 0 ? '#ff5a5a' : '#ffd24a';
+    this.el.objective.textContent = g.missions.objective();
+    const dots = [1, 2, 3, 4, 5].map((i) => (g.missions.doneIds.includes(i) ? '●' : '○')).join(' ');
+    this.el['mission-dots'].textContent = `Missions ${dots}  (${g.missions.doneCount}/5)`;
+    this.el.doubloons.textContent = `◉ Doubloons ${g.missions.doubloonCount}/12`;
+    const t = g.missions.taxi;
+    this.el['fare-streak'].textContent = t.active
+      ? `Taxi: ${t.active.state === 'pickup' ? 'pick up the fare' : 'drop off the fare'} · streak ${t.streak}`
+      : `Taxi streak ${t.streak} · fares done ${t.done}`;
+    this.el.timer.textContent = g.missions.current && g.missions.current.id === 2
+      ? `Courier ${Math.max(0, Math.ceil(g.missions.timer))}s`
+      : (g.missions.current && g.missions.current.id === 5 && g.missions.stage === 2
+        ? `Deliver! ${Math.max(0, Math.ceil(g.missions.timer))}s` : '');
+    this._drawMinimap();
   }
-
-  _drawMinimap(g) {
-    if (!this.mm) return;
-    const ctx = this.mm;
-    const S = 180;
-    const toMap = (v) => ((v + 180) / 360) * S;
-    ctx.clearRect(0, 0, S, S);
-    ctx.fillStyle = 'rgba(12, 18, 28, 0.85)';
-    ctx.fillRect(0, 0, S, S);
-    // Blocks.
-    ctx.fillStyle = '#3a4356';
-    for (const bx of BLOCKS) {
-      for (const bz of BLOCKS) {
-        ctx.fillRect(toMap(bx - 13), toMap(bz - 13), 26 / 360 * S, 26 / 360 * S);
-      }
-    }
-    // Roads.
-    ctx.strokeStyle = '#6a7284';
-    ctx.lineWidth = 5;
+  _drawMinimap() {
+    const ctx = this.mapCtx;
+    if (!ctx) return;
+    const W = 170;
+    const toMap = (v) => ((v + 200) / 400) * W;
+    ctx.fillStyle = 'rgba(12,18,26,0.85)';
+    ctx.fillRect(0, 0, W, W);
+    ctx.fillStyle = '#2c3844';
+    for (const bx of BLOCKS) for (const bz of BLOCKS) ctx.fillRect(toMap(bx - 15), toMap(bz - 15), 30 * W / 400, 30 * W / 400);
+    ctx.strokeStyle = '#5a6a78';
+    ctx.lineWidth = 2;
     for (const r of ROADS) {
-      ctx.beginPath();
-      ctx.moveTo(0, toMap(r));
-      ctx.lineTo(S, toMap(r));
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(toMap(r), 0);
-      ctx.lineTo(toMap(r), S);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(toMap(-198), toMap(r)); ctx.lineTo(toMap(198), toMap(r)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(toMap(r), toMap(-198)); ctx.lineTo(toMap(r), toMap(198)); ctx.stroke();
     }
-    // Sea.
-    ctx.fillStyle = '#1e6f9e';
-    ctx.fillRect(toMap(180), 0, S - toMap(180), S);
-    ctx.fillRect(0, toMap(180), S, S - toMap(180));
-    // Cash pickups.
-    ctx.fillStyle = '#39d353';
-    for (const p of g.pickups || []) {
-      if (!p.taken) {
-        ctx.beginPath();
-        ctx.arc(toMap(p.x), toMap(p.z), 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    ctx.fillStyle = '#3fa7c9';
+    ctx.fillRect(toMap(200), 0, W - toMap(200), W);
+    const g = this.game;
+    const target = g.missions.targetPos();
+    if (target) {
+      ctx.fillStyle = '#ffd24a';
+      ctx.beginPath(); ctx.arc(toMap(target.x), toMap(target.z), 5, 0, Math.PI * 2); ctx.fill();
     }
-    // Mission target.
-    const tgt = g.missionTarget ? g.missionTarget() : null;
-    if (tgt) {
-      const pulse = 4 + Math.sin(performance.now() / 240) * 1.6;
-      ctx.fillStyle = '#ffd23e';
-      ctx.beginPath();
-      ctx.arc(toMap(tgt[0]), toMap(tgt[1]), pulse, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#20242e';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
+    const fare = g.missions.taxi.active;
+    if (fare) {
+      const ft = fare.state === 'pickup' ? fare.pickup : fare.dest;
+      ctx.fillStyle = '#14b8a6';
+      ctx.beginPath(); ctx.arc(toMap(ft.x), toMap(ft.z), 4, 0, Math.PI * 2); ctx.fill();
     }
-    // Traffic.
-    ctx.fillStyle = '#cfd6e4';
-    for (const c of g.traffic.cars) {
-      ctx.fillRect(toMap(c.group.position.x) - 1.5, toMap(c.group.position.z) - 1.5, 3, 3);
-    }
-    // Police.
-    ctx.fillStyle = '#ff4d4d';
+    ctx.fillStyle = '#ff5a5a';
     for (const c of g.police.policeCars) {
-      ctx.beginPath();
-      ctx.arc(toMap(c.group.position.x), toMap(c.group.position.z), 3, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(toMap(c.x), toMap(c.z), 3, 0, Math.PI * 2); ctx.fill();
     }
-    // Player arrow.
+    ctx.fillStyle = '#e8e8e8';
+    for (const c of g.traffic.cars) ctx.fillRect(toMap(c.x) - 1.5, toMap(c.z) - 1.5, 3, 3);
     const p = g.playerPos();
-    const h = g.playerHeading();
-    ctx.save();
-    ctx.translate(toMap(p.x), toMap(p.z));
-    ctx.rotate(Math.atan2(Math.sin(h), -Math.cos(h)));
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#37e08b';
+    ctx.beginPath(); ctx.arc(toMap(p.x), toMap(p.z), 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#37e08b';
     ctx.beginPath();
-    ctx.moveTo(0, -6);
-    ctx.lineTo(4.5, 5);
-    ctx.lineTo(-4.5, 5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    ctx.moveTo(toMap(p.x), toMap(p.z));
+    ctx.lineTo(toMap(p.x + Math.sin(g.player.heading) * 14), toMap(p.z + Math.cos(g.player.heading) * 14));
+    ctx.stroke();
   }
 }

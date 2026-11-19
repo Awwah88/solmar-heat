@@ -1,144 +1,105 @@
-// Police for Solmar Heat: wanted level 0-5, patrol cars that spawn, chase
-// and ram, and the Busted rule when they corner the player on foot.
+// Solmar Heat — the wanted system and the police. Wanted runs 0–5 stars:
+// stealing a car or hurting someone raises it, the Spray Shop clears it
+// for $75, and it decays one star at a time once no police car has been
+// near the player for a while. Police cars spawn on nearby roads, chase,
+// and ram — their rams chip the player's health. M5's finale (new in R16)
+// pins the chase at 4 stars while the limo runs to the Boardwalk.
+import * as THREE from 'three';
+import { ROADS, TUNING } from './config.js';
+import { Car } from './vehicles.js';
 
-import { ROADS, TUNING, clamp, wrapAngle } from './config.js';
-import { makeCarMesh } from './vehicles.js';
-
-export class PoliceSystem {
-  constructor(THREE, scene, rng) {
-    this.THREE = THREE;
+export class Police {
+  constructor(scene, game) {
     this.scene = scene;
-    this.rng = rng;
+    this.game = game;
     this.wanted = 0;
     this.policeCars = [];
-    this._decayT = 0;
-    this._bustedT = 0;
-    this._sirenT = 0;
-    this.onBusted = null;
-    this.onRam = null;
+    this.quietTimer = 0;
+    this.spawnTimer = 0;
   }
-
   setWanted(n) {
-    this.wanted = clamp(Math.round(n), 0, TUNING.maxWanted);
-    this._decayT = 0;
-    this._syncCars();
+    this.wanted = Math.max(0, Math.min(5, n));
+    this.quietTimer = 0;
   }
-
-  addWanted(n) {
-    this.setWanted(this.wanted + n);
+  addWanted(n) { this.setWanted(this.wanted + n); }
+  clear() { this.setWanted(0); }
+  _spawnOne() {
+    const p = this.game.playerPos();
+    const road = ROADS[Math.floor(Math.random() * ROADS.length)];
+    const vertical = Math.random() < 0.5;
+    const x = vertical ? road : p.x + (Math.random() < 0.5 ? -30 : 30);
+    const z = vertical ? p.z + (Math.random() < 0.5 ? -30 : 30) : road;
+    const car = new Car(0x1a1a2e, 'sedan', Math.max(-170, Math.min(170, x)), Math.max(-170, Math.min(170, z)), 0);
+    car.isPolice = true;
+    // Police livery: white doors + light bar.
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.25, 0.5), new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff2222, emissiveIntensity: 1.5 }));
+    bar.position.set(0, 1.7, 0);
+    car.group.add(bar);
+    car.speed = 12;
+    this.policeCars.push(car);
+    this.scene.add(car.group);
   }
-
-  clearWanted() {
-    this.setWanted(0);
+  _removeFar() {
+    const p = this.game.playerPos();
+    for (let i = this.policeCars.length - 1; i >= 0; i--) {
+      const c = this.policeCars[i];
+      if (Math.hypot(c.x - p.x, c.z - p.z) > 260) {
+        this.scene.remove(c.group);
+        this.policeCars.splice(i, 1);
+      }
+    }
   }
-
-  _syncCars() {
-    const want = Math.min(this.wanted, 4);
-    while (this.policeCars.length < want) this._spawnCar();
+  update(dt) {
+    const p = this.game.playerPos();
+    const want = Math.min(this.wanted, 5);
+    this.spawnTimer -= dt;
+    if (this.policeCars.length < want && this.spawnTimer <= 0) {
+      this._spawnOne();
+      this.spawnTimer = 1.2;
+    }
     while (this.policeCars.length > want) {
       const c = this.policeCars.pop();
       this.scene.remove(c.group);
     }
-  }
-
-  _spawnCar() {
-    const group = makeCarMesh(this.THREE, 0x1a1a22);
-    // Black-and-white cruiser: white doors, light bar.
-    const door = new this.THREE.Mesh(
-      new this.THREE.BoxGeometry(2.04, 0.5, 2.2),
-      new this.THREE.MeshLambertMaterial({ color: 0xe8e8e8 }),
-    );
-    door.position.y = 0.62;
-    group.add(door);
-    const bar = new this.THREE.Mesh(
-      new this.THREE.BoxGeometry(1.2, 0.22, 0.5),
-      new this.THREE.MeshBasicMaterial({ color: 0x3a6fd8 }),
-    );
-    bar.position.set(0, 1.68, -0.25);
-    group.add(bar);
-    this.scene.add(group);
-    this.policeCars.push({
-      group,
-      speed: 0,
-      heading: this.rng() * Math.PI * 2,
-      stuckT: 0,
-    });
-  }
-
-  // Place a fresh police car on a road 30-50u from the player.
-  _placeNear(car, px, pz) {
-    const road = ROADS[Math.floor(this.rng() * ROADS.length)];
-    const along = (Math.floor(this.rng() * 9) - 4) * 36;
-    const a = this.rng() * Math.PI * 2;
-    let x = px + Math.sin(a) * (32 + this.rng() * 16);
-    let z = pz + Math.cos(a) * (32 + this.rng() * 16);
-    if (this.rng() < 0.5) { x = road; z = along; }
-    else { x = along; z = road; }
-    car.group.position.set(clamp(x, -170, 170), 0, clamp(z, -170, 170));
-    car.heading = Math.atan2(px - x, pz - z);
-    car.group.rotation.y = car.heading;
-    car.speed = 6;
-  }
-
-  update(dt, player, audio) {
-    if (this.wanted <= 0) {
-      for (const c of this.policeCars) {
-        c.speed = Math.max(0, c.speed - 8 * dt);
-      }
-      return;
-    }
-    // Decay: one star per 22s with no cruiser close by.
-    const px = player.x;
-    const pz = player.z;
-    let nearest = Infinity;
-    for (const c of this.policeCars) {
-      const d = Math.hypot(c.group.position.x - px, c.group.position.z - pz);
-      if (d < nearest) nearest = d;
-    }
-    if (nearest > 45) {
-      this._decayT += dt;
-      if (this._decayT > 22) {
-        this._decayT = 0;
-        this.setWanted(this.wanted - 1);
-      }
-    } else {
-      this._decayT = 0;
-    }
-    this._sirenT -= dt;
-    if (this._sirenT <= 0) {
-      this._sirenT = 1.6;
-      if (audio) audio.sirenBlip();
-    }
-    for (const c of this.policeCars) {
-      const dx = px - c.group.position.x;
-      const dz = pz - c.group.position.z;
+    let nearest = 999;
+    for (const car of this.policeCars) {
+      const dx = p.x - car.x;
+      const dz = p.z - car.z;
       const d = Math.hypot(dx, dz);
-      if (d > 70) this._placeNear(c, px, pz);
-      const target = Math.atan2(dx, dz);
-      const turn = clamp(wrapAngle(target - c.heading), -2.6 * dt, 2.6 * dt);
-      c.heading = wrapAngle(c.heading + turn);
-      const wantSpeed = Math.min(TUNING.policeTopSpeed, 9 + this.wanted * 1.6);
-      c.speed += (wantSpeed - c.speed) * Math.min(1, dt * 1.2);
-      c.group.position.x += Math.sin(c.heading) * c.speed * dt;
-      c.group.position.z += Math.cos(c.heading) * c.speed * dt;
-      c.group.rotation.y = c.heading;
-      // Ram: contact with the player's car hurts and shoves it.
-      if (d < 4.6 && player.car) {
-        if (this.onRam) this.onRam(c);
-        c.speed *= 0.55;
-        c.group.position.x -= Math.sin(c.heading) * 2.2;
-        c.group.position.z -= Math.cos(c.heading) * 2.2;
+      nearest = Math.min(nearest, d);
+      const desired = Math.atan2(dx, dz);
+      let err = desired - car.heading;
+      while (err > Math.PI) err -= Math.PI * 2;
+      while (err < -Math.PI) err += Math.PI * 2;
+      car.heading += Math.max(-1.6 * dt, Math.min(1.6 * dt, err * 2 * dt));
+      const target = d > 6 ? TUNING.policeTopSpeed : TUNING.policeTopSpeed * 0.55;
+      car.speed += Math.sign(target - car.speed) * 14 * dt;
+      car.group.position.x += Math.sin(car.heading) * car.speed * dt;
+      car.group.position.z += Math.cos(car.heading) * car.speed * dt;
+      car.group.rotation.y = car.heading;
+      // Ram: contact with the player hurts, and shoves a player car.
+      if (d < 3.4) {
+        this.game.damagePlayer(TUNING.policeRamDamage * dt * 4, 'police');
+        const pc = this.game.player.car;
+        if (pc) {
+          pc.group.position.x += Math.sin(car.heading) * 2.4 * dt;
+          pc.group.position.z += Math.cos(car.heading) * 2.4 * dt;
+        }
       }
-      // Cornered on foot at 2+ stars: busted.
-      if (!player.car && d < 3.2 && this.wanted >= 2) {
-        this._bustedT += dt;
-        if (this._bustedT > 1.4) {
-          this._bustedT = 0;
-          if (this.onBusted) this.onBusted();
+    }
+    this._removeFar();
+    // Wanted decays once the heat is off: no police car near for a while.
+    if (this.wanted > 0) {
+      if (nearest > 30) {
+        this.quietTimer += dt;
+        if (this.quietTimer > TUNING.wantedDecayDelay) {
+          this.setWanted(this.wanted - 1);
+          this.quietTimer = 0;
         }
       } else {
-        this._bustedT = Math.max(0, this._bustedT - dt * 2);
+        this.quietTimer = 0;
       }
     }
+    this.game.audio.setSiren(this.wanted > 0 && this.policeCars.length > 0);
   }
 }
