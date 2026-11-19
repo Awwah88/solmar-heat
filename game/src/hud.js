@@ -1,136 +1,178 @@
-// HUD: money, wanted stars, health, minimap, objective, mission
-// tracker, toasts and the menu screens. Toasts are suppressed while a
-// screenshot is being staged.
-export function createHud(G) {
-  const $ = (id) => document.getElementById(id);
-  const moneyEl = $('money');
-  const starsEl = $('stars');
-  const healthFill = $('health-fill');
-  const healthText = $('health-text');
-  const objectiveEl = $('objective');
-  const trackerEl = $('tracker');
-  const toastsEl = $('toasts');
-  const speedEl = $('speed');
-  const map = $('minimap');
-  const mctx = map ? map.getContext('2d') : null;
+// Solmar Heat — HUD, minimap, and screens.
+// All on-screen UI lives here: money/health/wanted/mission/objective,
+// the timer, the flashing message line, the minimap, and the four
+// screens (menu, playing, busted, wasted, win).
 
-  let toastTimer = null;
+import { LANDMARKS, clamp } from './config.js';
 
-  function renderStars(n) {
-    starsEl.textContent = '★'.repeat(n) + '☆'.repeat(5 - n);
-    starsEl.style.color = n >= 3 ? '#ff4444' : '#ffd27a';
+const MAP_SIZE = 180; // px
+const MAP_SCALE = MAP_SIZE / 400; // world units -> px (world spans ~-200..200)
+
+export class HUD {
+  constructor() {
+    this.moneyEl = document.getElementById('money');
+    this.healthFill = document.getElementById('health-fill');
+    this.wantedEl = document.getElementById('wanted');
+    this.missionEl = document.getElementById('mission');
+    this.objectiveEl = document.getElementById('objective');
+    this.timerEl = document.getElementById('timer');
+    this.flashEl = document.getElementById('flash');
+    this.minimap = document.getElementById('minimap');
+    this.mapCtx = this.minimap ? this.minimap.getContext('2d') : null;
+    this.menuEl = document.getElementById('menu');
+    this.winEl = document.getElementById('win-screen');
+    this.bustedEl = document.getElementById('busted-screen');
+    this.wastedEl = document.getElementById('wasted-screen');
+    this.winMoneyEl = document.getElementById('win-money');
+    this._flashAt = 0;
+    this._flashTimer = 0;
   }
 
-  function setObjective(text) {
-    if (objectiveEl && objectiveEl.textContent !== text) objectiveEl.textContent = text;
+  setMoney(n) {
+    if (this.moneyEl) this.moneyEl.textContent = `$${Math.round(n)}`;
   }
 
-  function toast(msg) {
-    if (G.shotMode || !toastsEl) return;
-    toastsEl.textContent = msg;
-    toastsEl.style.opacity = '1';
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toastsEl.style.opacity = '0'; }, 3400);
+  setHealth(n) {
+    if (!this.healthFill) return;
+    const h = clamp(Math.round(n), 0, 100);
+    this.healthFill.style.width = `${h}%`;
+    this.healthFill.style.background = h > 50 ? '#4caf50' : h > 25 ? '#ff9800' : '#f44336';
   }
 
-  function setTracker() {
-    if (!trackerEl) return;
-    const titles = ['M1 Hot Wheels', 'M2 Sunset Courier', 'M3 The Heat', "M4 Marlin's Debt"];
-    const mi = G.missions.missionIndex;
-    let html = '';
-    titles.forEach((t, i) => {
-      const done = i < mi || mi >= 4;
-      const active = i === mi && mi < 4;
-      html += `<div class="${done ? 'done' : active ? 'active' : ''}">${done ? '✓' : active ? '▶' : '○'} ${t}</div>`;
-    });
-    if (mi === 1) html += `<div class="sub">Package ${G.missions.packageIdx + 1} of 3 · ${Math.ceil(G.missions.timer)}s</div>`;
-    trackerEl.innerHTML = html;
+  setWanted(n) {
+    if (!this.wantedEl) return;
+    let stars = '';
+    for (let i = 0; i < 5; i++) stars += i < n ? '★' : '☆';
+    this.wantedEl.textContent = stars;
+    this.wantedEl.style.color = n > 0 ? '#ff5722' : '#888';
   }
 
-  function drawMinimap() {
-    if (!mctx) return;
-    const S = 140, W = 380; // world spans -190..190
-    const px = (x) => ((x + 190) / W) * S;
-    const pz = (z) => ((z + 190) / W) * S;
-    mctx.fillStyle = '#10141a';
-    mctx.fillRect(0, 0, S, S);
-    // Roads.
-    mctx.fillStyle = '#3a3a42';
-    for (const r of [-162, -126, -90, -54, -18, 18, 54, 90, 126, 162]) {
-      mctx.fillRect(px(r) - 2, 0, 4, S);
-      mctx.fillRect(0, pz(r) - 2, S, 4);
+  setMission(title) {
+    if (this.missionEl) this.missionEl.textContent = title;
+  }
+
+  setObjective(text) {
+    if (this.objectiveEl) this.objectiveEl.textContent = text;
+  }
+
+  setTimer(seconds) {
+    if (!this.timerEl) return;
+    if (seconds == null) {
+      this.timerEl.textContent = '';
+      return;
     }
-    // Beach + sea.
-    mctx.fillStyle = '#d9b380';
-    mctx.fillRect(0, pz(162), S, pz(182) - pz(162));
-    mctx.fillStyle = '#1d6f8e';
-    mctx.fillRect(0, pz(182), S, S - pz(182));
-    // Buildings.
-    mctx.fillStyle = '#8a8a86';
-    for (const b of G.city.buildings) {
-      mctx.fillRect(px(b.x - b.hw), pz(b.z - b.hd), Math.max(2, px(b.x + b.hw) - px(b.x - b.hw)), Math.max(2, pz(b.z + b.hd) - pz(b.z - b.hd)));
+    const s = Math.max(0, Math.ceil(seconds));
+    const m = Math.floor(s / 60);
+    this.timerEl.textContent = `${m}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  flash(text) {
+    if (!this.flashEl) return;
+    this.flashEl.textContent = text;
+    this.flashEl.style.opacity = '1';
+    this._flashTimer = 2.5;
+  }
+
+  _tickFlash(dt) {
+    if (this._flashTimer > 0) {
+      this._flashTimer -= dt;
+      if (this._flashTimer <= 0 && this.flashEl) this.flashEl.style.opacity = '0';
+    }
+  }
+
+  _toMap(x, z) {
+    return [(x + 200) * MAP_SCALE, (z + 200) * MAP_SCALE];
+  }
+
+  updateMinimap(s) {
+    const ctx = this.mapCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, MAP_SIZE, MAP_SIZE);
+    ctx.fillStyle = 'rgba(8, 14, 24, 0.85)';
+    ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+    // Sea on the south edge.
+    ctx.fillStyle = 'rgba(30, 90, 140, 0.7)';
+    ctx.fillRect(0, (185 + 200) * MAP_SCALE, MAP_SIZE, MAP_SIZE);
+    // Roads.
+    ctx.strokeStyle = 'rgba(120, 130, 145, 0.8)';
+    ctx.lineWidth = 2;
+    for (const v of [-162, -126, -90, -54, -18, 18, 54, 90, 126, 162]) {
+      const [ax] = this._toMap(v, 0);
+      const [, az] = this._toMap(0, v);
+      ctx.beginPath(); ctx.moveTo(0, az); ctx.lineTo(MAP_SIZE, az); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ax, 0); ctx.lineTo(ax, MAP_SIZE); ctx.stroke();
     }
     // Landmarks.
-    mctx.fillStyle = '#ffd27a';
-    for (const k of Object.keys(G.city.landmarks)) {
-      const l = G.city.landmarks[k];
-      mctx.fillRect(px(l.x) - 2, pz(l.z) - 2, 4, 4);
+    for (const lm of Object.values(LANDMARKS)) {
+      const [x, y] = this._toMap(lm.x, lm.z);
+      ctx.fillStyle = '#9aa5b1';
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
     }
-    // Mission marker.
-    const mk = G.missions.marker;
-    if (mk) {
-      mctx.fillStyle = '#ffdd33';
-      mctx.beginPath();
-      mctx.arc(px(mk.x), pz(mk.z), 4, 0, Math.PI * 2);
-      mctx.fill();
+    // Mission marker (pulsing yellow) and taxi marker (cyan).
+    if (s.marker) {
+      const [x, y] = this._toMap(s.marker.x, s.marker.z);
+      const r = 5 + Math.sin(s.now * 5) * 1.5;
+      ctx.fillStyle = '#ffd54a';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     }
-    // Traffic (grey), police (red), gold car (gold).
-    mctx.fillStyle = '#9aa0a6';
-    for (const c of G.traffic.cars) mctx.fillRect(px(c.group.position.x) - 1, pz(c.group.position.z) - 1, 2, 2);
-    mctx.fillStyle = '#ff4444';
-    for (const c of G.police.policeCars) mctx.fillRect(px(c.group.position.x) - 1, pz(c.group.position.z) - 1, 3, 3);
-    if (G.missions.goldCar) {
-      mctx.fillStyle = '#ffd700';
-      mctx.fillRect(px(G.missions.goldCar.group.position.x) - 2, pz(G.missions.goldCar.group.position.z) - 2, 4, 4);
+    if (s.taxiMarker) {
+      const [x, y] = this._toMap(s.taxiMarker.x, s.taxiMarker.z);
+      ctx.fillStyle = '#4dd0e1';
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    // Police cars (red), gold car (gold).
+    for (const c of s.policeCars || []) {
+      const [x, y] = this._toMap(c.x, c.z);
+      ctx.fillStyle = '#ff5252';
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    if (s.goldCar) {
+      const [x, y] = this._toMap(s.goldCar.x, s.goldCar.z);
+      ctx.fillStyle = '#ffd54a';
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
     }
     // Player arrow.
-    const p = G.playerPos();
-    mctx.save();
-    mctx.translate(px(p.x), pz(p.z));
-    mctx.rotate(Math.PI - G.playerHeading());
-    mctx.fillStyle = '#ffffff';
-    mctx.beginPath();
-    mctx.moveTo(0, -5); mctx.lineTo(4, 4); mctx.lineTo(-4, 4); mctx.closePath();
-    mctx.fill();
-    mctx.restore();
+    const [px, py] = this._toMap(s.playerX, s.playerZ);
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(Math.atan2(Math.sin(s.playerHeading), Math.cos(s.playerHeading)) + Math.PI / 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, -6); ctx.lineTo(4.5, 5); ctx.lineTo(-4.5, 5); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
-  let mapTick = 0;
-  return {
-    setMoney(v) { if (moneyEl) moneyEl.textContent = '$' + Math.floor(v); },
-    setWanted(n) { renderStars(n); },
-    setHealth(n) {
-      const h = Math.max(0, Math.min(100, Math.ceil(n)));
-      if (healthFill) healthFill.style.width = h + '%';
-      if (healthText) healthText.textContent = h;
-    },
-    setSpeed(v) { if (speedEl) speedEl.textContent = v > 0.5 ? Math.round(v * 3.6) + ' km/h' : ''; },
-    setObjective, toast, setTracker,
-    drawMinimap(dt) {
-      mapTick += dt;
-      if (mapTick > 0.12) { mapTick = 0; drawMinimap(); }
-    },
-    showScreen(name) {
-      for (const id of ['menu', 'pause-menu', 'win-screen', 'busted-screen', 'wasted-screen']) {
-        const el = $(id);
-        if (el) el.style.display = id === name ? 'flex' : 'none';
-      }
-      const hud = $('hud');
-      if (hud) hud.style.display = name === null ? 'block' : 'none';
-    },
-    setWinMoney(v) {
-      const el = $('win-money');
-      if (el) el.textContent = '$' + Math.floor(v);
-    },
-  };
+  showMenu() {
+    this._show(this.menuEl);
+  }
+
+  showPlaying() {
+    this._show(null);
+  }
+
+  showBusted() {
+    this._show(this.bustedEl);
+  }
+
+  showWasted() {
+    this._show(this.wastedEl);
+  }
+
+  showWin(money) {
+    if (this.winMoneyEl) this.winMoneyEl.textContent = `$${Math.round(money)}`;
+    this._show(this.winEl);
+  }
+
+  _show(el) {
+    for (const scr of [this.menuEl, this.winEl, this.bustedEl, this.wastedEl]) {
+      if (scr) scr.style.display = 'none';
+    }
+    if (el) el.style.display = 'flex';
+  }
+
+  tick(dt, mapSnapshot) {
+    this._tickFlash(dt);
+    if (mapSnapshot) this.updateMinimap(mapSnapshot);
+  }
 }

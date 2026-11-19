@@ -1,33 +1,41 @@
-// localStorage save / load. The save holds money, mission progress,
-// position and shells; it is written on mission completion and every
-// 20 seconds of play.
+// Solmar Heat — localStorage save. Autosaves while playing and on
+// every mission completion. Loading restores money, health, the
+// completed-mission list (through Missions.setDone so the reward
+// counter stays in sync) and the player's position.
+
 const KEY = 'solmar-heat-save-v1';
 
-export function loadSave() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw);
-    if (typeof s !== 'object' || s === null) return null;
-    return s;
-  } catch (e) { return null; }
-}
+export class SaveManager {
+  write(data) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({
+        version: 1, ...data, savedAt: Date.now(),
+      }));
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
 
-export function saveGame(state) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify({
-      money: Math.floor(state.money || 0),
-      missionIndex: state.missionIndex || 0,
-      health: Math.ceil(state.health || 100),
-      x: state.x || 0,
-      z: state.z || 0,
-      shellsTaken: state.shellsTaken || 0,
-      hasPistol: !!state.hasPistol,
-      savedAt: Date.now(),
-    }));
-  } catch (e) { /* storage may be unavailable; the game goes on */ }
-}
+  read() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || data.version !== 1) return null;
+      return data;
+    } catch (err) {
+      return null;
+    }
+  }
 
-export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+  clear() {
+    try {
+      localStorage.removeItem(KEY);
+    } catch (err) { /* storage unavailable */ }
+  }
+
+  hasSave() {
+    return this.read() !== null;
+  }
 }

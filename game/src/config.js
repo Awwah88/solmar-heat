@@ -1,88 +1,139 @@
-// Solmar Heat — shared tuning, layout and story constants.
+// Solmar Heat — shared constants, story data and the seeded RNG.
 // Everything the other modules need to agree on lives here: the road
-// grid, the landmark positions, the economy and the physics numbers.
-export const CFG = {
-  // Road centrelines. The city is a 9x9 block grid; roads run between
-  // the blocks, 10 units wide, so a block centre sits 18 units from the
-  // nearest road centreline on each side.
-  roads: [-162, -126, -90, -54, -18, 18, 54, 90, 126, 162],
-  blockStep: 36,
-  blockCentres: [-144, -108, -72, -36, 0, 36, 72, 108, 144],
-  roadHalfWidth: 5,
-  cityEdge: 180,
-  beachZ: 162,
-  seaZ: 182,
+// grid, the landmarks, the mission script and the prices.
 
-  // The player car collides as a circle of radius 2. Buildings must keep
-  // their edges at least ~4 units from any road centreline; we clamp them
-  // much tighter (10 units from their block centre = 8 from the road).
-  carRadius: 2.0,
-  playerRadius: 0.6,
-  buildingMaxEdge: 10,
-
-  spawn: { x: 80, z: -126, heading: 0 },
-
-  physics: {
-    accel: 14, brake: 26, reverseAccel: 11,
-    maxSpeed: 30, maxReverse: 9,
-    turnRate: 2.1, grip: 6.5,
-    walkSpeed: 4.4, runSpeed: 7.4,
-    wallCut: 0.6, wallCutCooldown: 0.5,
-  },
-
-  economy: {
-    m1: 150, m2: [50, 100, 100], m3: 400, m4: 275,
-    spray: 75, cash: 25, shell: 10, taxi: 40,
-  },
-
-  // Landmarks: centre + half extents of the collider box, the mission
-  // marker that sits by it, and the trigger radius around the marker.
-  landmarks: {
-    garage:    { x: -144, z: -144, hw: 9,   hd: 7,   marker: { x: -144, z: -148 }, radius: 12 },
-    hotel:     { x: 144,  z: -144, hw: 8,   hd: 6,   marker: { x: 144,  z: -144 }, radius: 10 },
-    lighthouse:{ x: 150,  z: 185,  hw: 8,   hd: 8,   marker: { x: 150,  z: 176 },  radius: 11 },
-    spray:     { x: -54,  z: 54,   hw: 6,   hd: 6,   marker: { x: -54,  z: 54 },   radius: 11 },
-    safehouse: { x: 54,   z: -54,  hw: 5.5, hd: 5.5, marker: { x: 54,   z: -54 },  radius: 10 },
-    pier:      { x: 60,   z: 202,  hw: 16,  hd: 14,  marker: { x: 60,   z: 190 },  radius: 10 },
-  },
-  goldCar: { x: 126, z: -144 },
-  taxiStand: { x: 100, z: 170 },
-
-  missions: [
-    { title: 'Hot Wheels',      text: 'Steal a car and deliver it to the Marina Garage' },
-    { title: 'Sunset Courier',  text: 'Deliver 3 packages before the timer runs out' },
-    { title: 'The Heat',        text: 'Lose the cops, then reach the Safehouse' },
-    { title: "Marlin's Debt",   text: "Steal the gold Marlin GT, deliver it to the Old Lighthouse, then escape home" },
-  ],
-  courierSeconds: 240,
-
-  colors: {
-    sky: 0xff9a56, fog: 0xf7a56b, sun: 0xffd27a,
-    sea: 0x1d6f8e, sand: 0xd9b380, asphalt: 0x2b2b31,
-    sidewalk: 0x8a8a86, grass: 0x5d7a4a,
-    building: [0xc96f4a, 0x4a7a9e, 0x9e8a5a, 0x7a5a8a, 0x5a8a6a, 0xb0a090, 0x8a6a4a, 0x6a7a8a],
-    car: [0xc0392b, 0x2471a3, 0xf1c40f, 0x7d3c98, 0x16a085, 0xe67e22, 0x2c3e50, 0xbdc3c7],
-    gold: 0xd4af37,
-  },
+export const CITY = {
+  HALF: 180, // city asphalt runs -180..180 on both axes
+  BLOCK: 36, // city blocks are 36u squares
+  ROAD_HALF: 5, // asphalt half-width of a road
 };
 
-// Deterministic PRNG (mulberry32) so the city layout is identical on
-// every load — screenshots, smoke tests and playthroughs all see the
-// same streets.
-export function makeRng(seed) {
+// Road centrelines (18 + 36k) and block centres (36k).
+export const ROADS = [-162, -126, -90, -54, -18, 18, 54, 90, 126, 162];
+export const BLOCKS = [-144, -108, -72, -36, 0, 36, 72, 108, 144];
+
+// The six landmarks. Garage, hotel, spray shop and safehouse sit on
+// block centres; the lighthouse and the pier sit on the south beach.
+export const LANDMARKS = {
+  garage: { x: -144, z: -144, w: 26, d: 20, name: 'Marina Garage' },
+  hotel: { x: 144, z: -144, w: 16, d: 16, name: 'Hotel Solmar', tall: true },
+  lighthouse: { x: 150, z: 185, w: 12, d: 12, name: 'Old Lighthouse' },
+  spray: { x: -54, z: 54, w: 12, d: 12, name: 'Spray Shop' },
+  safehouse: { x: 54, z: -54, w: 12, d: 12, name: 'Safehouse' },
+  pier: { x: 60, z: 196, w: 10, d: 26, name: 'The Pier', noCollider: true },
+};
+
+// Mission trigger points (all on roads or on the beach, never inside
+// a building) and their trigger radii.
+export const MARKERS = {
+  garage: { x: -144, z: -148, r: 10 },
+  hotel: { x: 144, z: -144, r: 10 },
+  pier: { x: 60, z: 190, r: 10 },
+  lighthouse: { x: 150, z: 176, r: 10 },
+  safehouse: { x: 54, z: -54, r: 12 },
+  spray: { x: -54, z: 54, r: 12 },
+  goldCar: { x: 126, z: -144 },
+};
+
+// The story. Dana "Dash" Reyes owes the Marlin Club $400.
+export const MISSIONS = [
+  {
+    id: 'm1',
+    title: 'Hot Wheels',
+    reward: 150,
+    objective: 'Steal a car and take it to the Marina Garage',
+  },
+  {
+    id: 'm2',
+    title: 'Sunset Courier',
+    reward: 100,
+    packageReward: 50,
+    timeLimit: 240,
+    objective: 'Deliver 3 packages before sunset — Hotel, Pier, Safehouse',
+  },
+  {
+    id: 'm3',
+    title: 'The Heat',
+    reward: 400,
+    objective: 'Lose the heat at the Spray Shop, then reach the Safehouse',
+  },
+  {
+    id: 'm4',
+    title: "Marlin's Debt",
+    reward: 300,
+    objective: 'Steal the gold Marlin GT, drop it at the Old Lighthouse, escape home',
+  },
+];
+
+export const PRICES = {
+  spray: 75,
+  taxi: 40,
+  pickup: 25,
+  bustedFine: 50,
+};
+
+export const SPAWN = { x: 80, z: -126, heading: Math.PI / 2 };
+
+// Parked cars, all sitting on road lines so they can be stolen.
+export const PARKED_CARS = [
+  { x: -54, z: 120, color: 0xd23c2a },
+  { x: 54, z: -126, color: 0x2a6fd2 },
+  { x: 126, z: 54, color: 0xe8c832 },
+  { x: -126, z: -18, color: 0x37b24d },
+  { x: 18, z: -54, color: 0x8b5cf6 },
+];
+
+export const TRAFFIC_COUNT = 14;
+export const PED_COUNT = 24;
+export const DEBT = 400;
+
+// Warm Solmar Bay palette: sun-bleached stucco, terracotta, sand,
+// turquoise sea.
+export const PALETTE = {
+  sky: 0x8ecfeb,
+  asphalt: 0x3a3f46,
+  roadLine: 0xd8d3c0,
+  sidewalk: 0x9aa0a3,
+  sand: 0xe6cf9e,
+  sea: 0x1e8fa8,
+  grass: 0x7fae62,
+  building: [0xf2e3c6, 0xe8b48a, 0xf6d9a0, 0xd98a6c, 0xcfe0d8, 0xe9c46a, 0xf4a261],
+  roof: [0xb5533c, 0x8a5a44, 0x5d6b7a, 0x7a4a3a],
+  car: [0xd23c2a, 0x2a6fd2, 0xe8c832, 0x37b24d, 0x8b5cf6, 0xe8e8e8, 0x222831, 0xef8354],
+};
+
+// Deterministic RNG so the city is identical on every load.
+export function mulberry32(seed) {
   let a = seed >>> 0;
-  return function () {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
+  return function next() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-export function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-export function dist2(ax, az, bx, bz) { const dx = ax - bx, dz = az - bz; return dx * dx + dz * dz; }
+export function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
 export function wrapAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
 }
+
+export function dist2(ax, az, bx, bz) {
+  const dx = ax - bx;
+  const dz = az - bz;
+  return Math.hypot(dx, dz);
+}
+
+// Cash pickups: fixed sidewalk spots, kept clear of every mission
+// walk segment and of the playtest's driving routes, so a pickup can
+// never complete a mission leg by accident. Collected on foot only.
+export const PICKUP_SPOTS = [
+  { x: 25, z: 90 }, { x: -83, z: 25 }, { x: 97, z: -83 }, { x: -11, z: -119 },
+  { x: 133, z: 97 }, { x: -119, z: -11 }, { x: 61, z: 133 }, { x: -47, z: -119 },
+];
