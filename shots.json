@@ -1,1 +1,25 @@
-[{"name":"1-cover.jpg","query":"?shot=cover&seed=1"},{"name":"2-foot.jpg","query":"?shot=foot&seed=1"},{"name":"3-mission.jpg","query":"?shot=mission&seed=1"},{"name":"4-menu.jpg","query":"?shot=menu&seed=1"}]
+{
+  "cover": "1-cover.jpg",
+  "shots": [
+    {
+      "file": "1-cover.jpg",
+      "title": "Police chase at Casino Solmar",
+      "description": "Dana in the red sedan on a courier run, wanted level 3, police closing in near the new Casino Solmar — mission, minimap and HUD live."
+    },
+    {
+      "file": "2-foot.jpg",
+      "title": "On foot in Solmar Bay",
+      "description": "Dana on foot at a city intersection on Mission 1, traffic and pedestrians around her, HUD and minimap live."
+    },
+    {
+      "file": "3-mission.jpg",
+      "title": "Sunset Courier run",
+      "description": "Mission 2 in progress: Dana driving the red sedan toward the next package beacon, courier timer on the HUD."
+    },
+    {
+      "file": "4-menu.jpg",
+      "title": "Title menu over the city",
+      "description": "The Solmar Heat title menu over the orbiting city camera, with the mission list and controls."
+    }
+  ]
+}
