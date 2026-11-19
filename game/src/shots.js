@@ -1,40 +1,46 @@
-// ?shot= staging: puts the running game into the exact scene each
-// screenshot needs. Position the player FIRST, then set wanted (police
-// spawn around the player). The menu shot never starts the game.
-import { GOLD_GT } from "./config.js";
+// ?shot= staging for Solmar Heat screenshots: real gameplay states, staged
+// from the running game. Player position is always set BEFORE wanted, so
+// police spawn near the player. The menu shot never leaves the menu state.
 
-export function stageShot(game, params) {
-  const shot = params.get("shot");
-  if (!shot) return false;
-  if (shot === "menu") {
-    // Title screen over the orbiting city. Do not start the game.
-    return true;
+export function stageShot(game, name) {
+  const g = game;
+  if (name === 'menu') {
+    // Leave the game on the start screen with the orbit camera; do not
+    // call showPlaying() here.
+    return;
   }
-  if (shot === "cover") {
-    game.startNew();
-    game.missions.setCurrent(1);
-    game.teleport(96, -84, Math.PI * 0.9);
-    game.spawnPlayerCar(0xc22a1e, 96, -84, Math.PI * 0.9);
-    game.setWanted(3);
-    return true;
+  if (name === 'cover') {
+    // Police chase down a palm-lined road: in the red sedan, M2 active,
+    // 3 stars, cruisers closing in.
+    g.teleportPlayer(108, -126, Math.PI / 2);
+    g.enterCar(g.parked.redSedan);
+    g.missions.setDone([1]);
+    g.missions.startMission(g.missions.current);
+    g.setWanted(3);
+    g.showPlaying();
+    return;
   }
-  if (shot === "foot") {
-    game.startNew();
-    game.missions.setCurrent(0);
-    game.teleport(90, -118, 0.15);
-    return true;
+  if (name === 'foot') {
+    // On foot at a downtown intersection, M1 active, traffic passing.
+    g.teleportPlayer(54, -90, Math.PI);
+    g.missions.setDone([]);
+    g.missions.startMission(g.missions.current);
+    g.setWanted(0);
+    g.showPlaying();
+    return;
   }
-  if (shot === "mission") {
-    game.startNew();
-    game.missions.setCurrent(1);
-    game.teleport(126, 62, Math.PI);
-    game.spawnPlayerCar(0x3a6ad8, 126, 62, Math.PI);
-    game.setWanted(1);
-    return true;
+  if (name === 'mission') {
+    // Courier run: in the car, M2 with one package already delivered,
+    // 2 stars, heading for the next drop.
+    g.teleportPlayer(90, 18, Math.PI / 2);
+    g.enterCar(g.parked.redSedan);
+    g.missions.setDone([1]);
+    g.missions.startMission(g.missions.current);
+    g.missions.delivered.add(0);
+    g.setWanted(2);
+    g.showPlaying();
+    return;
   }
-  return false;
-}
-
-export function goldGtPos() {
-  return GOLD_GT;
+  // Unknown shot name: just play.
+  g.showPlaying();
 }
