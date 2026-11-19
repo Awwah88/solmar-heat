@@ -1,244 +1,216 @@
-// Solmar Heat — missions and the taxi side job.
-// Four story missions (Hot Wheels, Sunset Courier, The Heat,
-// Marlin's Debt) plus fares for anyone driving a cab. Rewards are
-// paid exactly once, in completeMission / payPackage; setDone only
-// re-syncs the reward counter from the completed list, so saving
-// and loading can never pay a mission twice.
+// Story missions plus the taxi side job. Completion always goes through
+// setDone(), which keeps the reward counter in sync — never flip .done
+// directly, or the update loop pays the same mission twice.
+import { MISSIONS, LANDMARKS, TAXI, GRID, makeRng, pick } from './config.js';
 
-import { MISSIONS, MARKERS, PRICES, ROADS, dist2 } from './config.js';
-import { Car } from './vehicles.js';
-
-const PACKAGE_STOPS = [MARKERS.hotel, MARKERS.pier, MARKERS.safehouse];
-export { PACKAGE_STOPS };
+function markerOf(id) {
+  const lm = LANDMARKS.find((l) => l.id === id);
+  return lm ? { x: lm.marker[0], z: lm.marker[1], name: lm.name } : null;
+}
 
 export class Missions {
-  constructor(game) {
-    this.game = game;
-    this.missionIndex = 0;
-    this.done = [];
-    this.current = null;
-    this.marker = null;
-    this.goldCar = null;
-    this.shellsTaken = 0;
+  constructor(hooks) {
+    this.hooks = hooks;
+    this.list = MISSIONS.map((m) => ({
+      id: m.id,
+      title: m.title,
+      brief: m.brief,
+      reward: m.reward,
+      bonus: m.bonus || null,
+      bonusCash: m.bonusCash || 0,
+      done: false,
+    }));
+    this.rewardsEarned = 0;
+    this.activeId = 'm1';
+    this.stage = 0;
     this.packageIndex = 0;
     this.timer = 0;
-    this.rewardTotal = 0;
-    this.m4Stage = 'steal'; // steal -> lighthouse -> escape
-    this.taxi = { active: false, phase: '', pickup: null, dest: null, cooldown: 0 };
-    this.taxiMarker = null;
+    this.m4Bonus = false;
+    this.taxi = null;
+    this.taxiCooldown = 8;
+    this.rng = makeRng(99);
   }
 
-  // The only way to set the completed list: it re-syncs the reward
-  // counter from the list, so a save-load round trip stays exact.
-  setDone(list) {
-    this.done = [...list];
-    let total = 0;
-    for (const id of this.done) {
-      const def = MISSIONS.find((m) => m.id === id);
-      if (def) total += def.reward;
+  get current() {
+    return this.list.find((m) => !m.done) || null;
+  }
+
+  get doneCount() {
+    return this.list.filter((m) => m.done).length;
+  }
+
+  get allDone() {
+    return this.list.every((m) => m.done);
+  }
+
+  // The only way to mark missions done. Recomputes the reward counter so a
+  // mission can never pay twice, even across a save/load.
+  setDone(ids) {
+    for (const id of ids) {
+      const m = this.list.find((x) => x.id === id);
+      if (m) m.done = true;
     }
-    total += this.shellsTaken * (MISSIONS[1].packageReward || 50);
-    this.rewardTotal = total;
-  }
-
-  reset() {
-    this.missionIndex = 0;
-    this.shellsTaken = 0;
+    this.rewardsEarned = this.list
+      .filter((m) => m.done)
+      .reduce((sum, m) => sum + m.reward + (m.id === 'm4' && this.m4Bonus ? m.bonusCash : 0), 0);
+    const next = this.current;
+    this.activeId = next ? next.id : null;
+    this.stage = 0;
     this.packageIndex = 0;
-    this.timer = 0;
-    this.m4Stage = 'steal';
-    this.taxi = { active: false, phase: '', pickup: null, dest: null, cooldown: 0 };
-    this.taxiMarker = null;
-    this.setDone([]);
-    this._clearGoldCar();
-    this.startMission(0);
+    if (next && next.id === 'm2') this.timer = 240;
   }
 
-  _clearGoldCar() {
-    if (this.goldCar) {
-      this.goldCar.remove();
-      this.goldCar = null;
+  startMission(id) {
+    this.activeId = id;
+    this.stage = 0;
+    this.packageIndex = 0;
+    if (id === 'm2') this.timer = 240;
+    if (id === 'm3' && this.hooks.setWanted) this.hooks.setWanted(3);
+  }
+
+  complete(id, bonus) {
+    const m = this.list.find((x) => x.id === id);
+    if (!m || m.done) return;
+    if (id === 'm4' && bonus) this.m4Bonus = true;
+    this.setDone([id]);
+    const payout = m.reward + (id === 'm4' && this.m4Bonus ? m.bonusCash : 0);
+    if (this.hooks.award) this.hooks.award(payout);
+    if (this.hooks.toast) this.hooks.toast(`Mission complete: ${m.title}  +$${payout}`);
+    if (this.hooks.jingle) this.hooks.jingle();
+    if (id === 'm2' && this.hooks.grantPistol) this.hooks.grantPistol();
+    if (this.allDone && this.hooks.onWin) this.hooks.onWin();
+  }
+
+  // Called when the player gets into a car.
+  checkEnterCar(car) {
+    const cur = this.current;
+    if (!cur) return;
+    if (cur.id === 'm1' && car.isRed) this.complete('m1');
+    if (cur.id === 'm4' && this.stage === 0 && car.isGold) {
+      this.stage = 1;
+      if (this.hooks.toast) this.hooks.toast('Gold Marlin GT secured. Get it to the Old Lighthouse — stay under 4 stars!');
     }
   }
 
-  startMission(i) {
-    this.missionIndex = i;
-    const def = MISSIONS[i];
-    if (!def) {
-      this.current = null;
-      this.marker = null;
+  // Where the HUD arrow and the minimap should point right now.
+  objective() {
+    const cur = this.current;
+    if (!cur) return { text: 'Debt paid. Solmar is yours.', target: null };
+    if (cur.id === 'm1') {
+      return { text: 'Steal the red sedan at Marina Garage', target: markerOf('garage') };
+    }
+    if (cur.id === 'm2') {
+      const def = MISSIONS.find((m) => m.id === 'm2');
+      const pkg = def.packages[Math.min(this.packageIndex, def.packages.length - 1)];
+      const left = Math.max(0, Math.ceil(this.timer));
+      return {
+        text: `Deliver package ${this.packageIndex + 1}/3 — ${left}s left`,
+        target: { x: pkg[0], z: pkg[1], name: 'Package' },
+      };
+    }
+    if (cur.id === 'm3') {
+      if (this.stage === 0) return { text: 'Lose the cops — get to 0 stars', target: null };
+      return { text: 'Clean! Slip to the Safehouse', target: markerOf('safehouse') };
+    }
+    if (cur.id === 'm4') {
+      if (this.stage === 0) return { text: 'Steal the gold Marlin GT at Hotel Solmar', target: markerOf('hotel') };
+      if (this.stage === 1) return { text: 'Deliver the GT to the Old Lighthouse (under 4 stars)', target: markerOf('lighthouse') };
+      return { text: 'Vanish to the Safehouse', target: markerOf('safehouse') };
+    }
+    return { text: cur.brief, target: null };
+  }
+
+  update(dt, ctx) {
+    const cur = this.current;
+    if (!cur) return;
+    const near = (t, r) => {
+      if (!t) return false;
+      const dx = ctx.player.x - t.x;
+      const dz = ctx.player.z - t.z;
+      return dx * dx + dz * dz < r * r;
+    };
+    if (cur.id === 'm2') {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = 240;
+        this.packageIndex = 0;
+        if (this.hooks.toast) this.hooks.toast('Client is furious — run the route again!');
+        return;
+      }
+      const def = MISSIONS.find((m) => m.id === 'm2');
+      const pkg = def.packages[this.packageIndex];
+      if (near({ x: pkg[0], z: pkg[1] }, 7)) {
+        this.packageIndex++;
+        if (this.hooks.toast) this.hooks.toast(`Package ${this.packageIndex}/3 delivered`);
+        if (this.hooks.blip) this.hooks.blip();
+        if (this.packageIndex >= def.packages.length) this.complete('m2');
+      }
       return;
     }
-    this.current = { id: def.id, title: def.title, objective: def.objective };
-    if (def.id === 'm1') {
-      this.marker = { x: MARKERS.garage.x, z: MARKERS.garage.z };
-    } else if (def.id === 'm2') {
-      this.packageIndex = 0;
-      this.shellsTaken = 0;
-      this.timer = def.timeLimit;
-      this.marker = { x: PACKAGE_STOPS[0].x, z: PACKAGE_STOPS[0].z };
-    } else if (def.id === 'm3') {
-      this.game.police.setWanted(3);
-      this.marker = { x: MARKERS.spray.x, z: MARKERS.spray.z };
-    } else if (def.id === 'm4') {
-      this.m4Stage = 'steal';
-      this._clearGoldCar();
-      this.goldCar = new Car(this.game.scene, {
-        x: MARKERS.goldCar.x, z: MARKERS.goldCar.z,
-        heading: Math.PI / 2, color: 0xe9c46a, gold: true,
-      });
-      this.game.parkedCars.push(this.goldCar);
-      this.marker = { x: MARKERS.goldCar.x, z: MARKERS.goldCar.z };
+    if (cur.id === 'm3') {
+      if (this.stage === 0 && ctx.police.wanted === 0) {
+        this.stage = 1;
+        if (this.hooks.toast) this.hooks.toast('Clean! Get to the Safehouse before they spot you again.');
+      } else if (this.stage === 1 && near(markerOf('safehouse'), 9)) {
+        this.complete('m3');
+      }
+      return;
     }
-    this.game.hud.setMission(def.title);
-    this.game.hud.setObjective(def.objective);
-  }
-
-  // Pay the current mission's reward once and move on.
-  completeMission() {
-    const def = MISSIONS[this.missionIndex];
-    if (!def) return;
-    this.game.addMoney(def.reward);
-    this.setDone([...this.done, def.id]);
-    this.game.audio.mission();
-    this.game.hud.flash(`Mission complete: ${def.title}  +$${def.reward}`);
-    this.game.saveSoon();
-    const next = this.missionIndex + 1;
-    if (next >= MISSIONS.length) {
-      this.missionIndex = next;
-      this.current = null;
-      this.marker = null;
-      this.game.winGame();
-    } else {
-      this.startMission(next);
-    }
-  }
-
-  payPackage() {
-    this.shellsTaken++;
-    this.game.addMoney(MISSIONS[1].packageReward);
-    this.game.audio.pickup();
-    this.game.hud.flash(`Package delivered  +$${MISSIONS[1].packageReward}`);
-    if (this.shellsTaken >= 3) {
-      this.completeMission();
-    } else {
-      this.packageIndex = this.shellsTaken;
-      const stop = PACKAGE_STOPS[this.packageIndex];
-      this.marker = { x: stop.x, z: stop.z };
-    }
-  }
-
-  _randomRoadPoint(minD, playerPos) {
-    for (let tries = 0; tries < 20; tries++) {
-      const x = ROADS[Math.floor(Math.random() * ROADS.length)];
-      const z = ROADS[Math.floor(Math.random() * ROADS.length)];
-      if (dist2(x, z, playerPos.x, playerPos.z) >= minD) return { x, z };
-    }
-    return { x: 18, z: 18 };
-  }
-
-  update(dt, playerPos, playerInCar, inGoldCar, carSpeed = 0) {
-    const g = this.game;
-    // --- story triggers ---------------------------------------------
-    if (this.current) {
-      const id = this.current.id;
-      if (id === 'm1') {
-        if (playerInCar && dist2(playerPos.x, playerPos.z, MARKERS.garage.x, MARKERS.garage.z) < MARKERS.garage.r) {
-          this.completeMission();
+    if (cur.id === 'm4') {
+      if (this.stage === 1 && near(markerOf('lighthouse'), 9)) {
+        if (ctx.police.wanted < 4) {
+          if (ctx.police.wanted <= 1) this.m4Bonus = true;
+          this.stage = 2;
+          if (this.hooks.toast) this.hooks.toast('Drop made. Now vanish to the Safehouse!');
+        } else if (this.hooks.toast) {
+          this.hooks.toast('Too hot! Lose a star before the drop.');
         }
-      } else if (id === 'm2') {
-        // Countdown; running out just extends the deadline — the
-        // courier never fails on time alone.
-        this.timer -= dt;
-        if (this.timer <= 0) {
-          this.timer = MISSIONS[1].timeLimit;
-          g.hud.flash('Sunset extended — keep delivering!');
-        }
-        g.hud.setTimer(Math.ceil(this.timer));
-        const stop = PACKAGE_STOPS[this.packageIndex];
-        if (stop && dist2(playerPos.x, playerPos.z, stop.x, stop.z) < stop.r) {
-          this.payPackage();
-        }
-      } else if (id === 'm3') {
-        if (g.police.wanted > 0) {
-          this.marker = { x: MARKERS.spray.x, z: MARKERS.spray.z };
-          g.hud.setObjective('Lose the heat at the Spray Shop first');
-        } else {
-          this.marker = { x: MARKERS.safehouse.x, z: MARKERS.safehouse.z };
-          g.hud.setObjective('Heat is off — reach the Safehouse');
-          if (dist2(playerPos.x, playerPos.z, MARKERS.safehouse.x, MARKERS.safehouse.z) < MARKERS.safehouse.r) {
-            this.completeMission();
-          }
-        }
-      } else if (id === 'm4') {
-        if (this.m4Stage === 'steal') {
-          if (inGoldCar) {
-            this.m4Stage = 'lighthouse';
-            this.marker = { x: MARKERS.lighthouse.x, z: MARKERS.lighthouse.z };
-            g.hud.setObjective('Gold GT secured — drop it at the Old Lighthouse (stay under 4 stars)');
-            g.police.setWanted(3);
-          }
-        } else if (this.m4Stage === 'lighthouse') {
-          if (inGoldCar && g.police.wanted < 4
-            && dist2(playerPos.x, playerPos.z, MARKERS.lighthouse.x, MARKERS.lighthouse.z) < MARKERS.lighthouse.r) {
-            this.m4Stage = 'escape';
-            this.marker = { x: MARKERS.safehouse.x, z: MARKERS.safehouse.z };
-            g.hud.setObjective('Delivered — escape to the Safehouse');
-            g.audio.mission();
-          } else if (!inGoldCar) {
-            this.m4Stage = 'steal';
-            this.marker = { x: MARKERS.goldCar.x, z: MARKERS.goldCar.z };
-            g.hud.setObjective('Steal the gold Marlin GT at the Hotel Solmar');
-          }
-        } else if (this.m4Stage === 'escape') {
-          if (inGoldCar
-            && dist2(playerPos.x, playerPos.z, MARKERS.safehouse.x, MARKERS.safehouse.z) < MARKERS.safehouse.r) {
-            this.completeMission();
-          } else if (!inGoldCar) {
-            this.m4Stage = 'steal';
-            this.marker = { x: MARKERS.goldCar.x, z: MARKERS.goldCar.z };
-          }
-        }
+      } else if (this.stage === 2 && near(markerOf('safehouse'), 9)) {
+        this.complete('m4', this.m4Bonus);
       }
     }
+  }
 
-    // --- taxi side job ----------------------------------------------
+  // Taxi side job: a passenger waits on a road; drive them across town.
+  updateTaxi(dt, ctx) {
+    if (this.doneCount < 1) return;
+    if (!this.taxi) {
+      this.taxiCooldown -= dt;
+      if (this.taxiCooldown <= 0) this._spawnTaxi();
+      return;
+    }
     const t = this.taxi;
-    if (t.cooldown > 0) t.cooldown -= dt;
-    if (!t.active && playerInCar && this.missionIndex >= 1 && t.cooldown <= 0) {
-      t.active = true;
-      t.phase = 'pickup';
-      t.pickup = this._randomRoadPoint(50, playerPos);
-      this.taxiMarker = { ...t.pickup, taxi: true };
-    } else if (t.active) {
-      if (t.phase === 'pickup') {
-        this.taxiMarker = { ...t.pickup, taxi: true };
-        // A fare is only picked up when the cab actually stops for it —
-        // a car blasting past an intersection does not collect one.
-        if (Math.abs(carSpeed) < 3
-          && dist2(playerPos.x, playerPos.z, t.pickup.x, t.pickup.z) < 6) {
-          t.phase = 'drop';
-          t.dest = this._randomRoadPoint(60, playerPos);
-          g.hud.flash('Fare picked up — drive to the destination');
-        }
-      } else if (t.phase === 'drop') {
-        this.taxiMarker = { ...t.dest, taxi: true };
-        if (Math.abs(carSpeed) < 3
-          && dist2(playerPos.x, playerPos.z, t.dest.x, t.dest.z) < 6) {
-          g.addMoney(PRICES.taxi);
-          g.audio.pickup();
-          g.hud.flash(`Fare complete  +$${PRICES.taxi}`);
-          t.active = false;
-          t.cooldown = 20;
-          this.taxiMarker = null;
-        }
-      }
-      if (!playerInCar) {
-        // Passenger bails if Dash ditches the cab.
-        t.active = false;
-        this.taxiMarker = null;
-        t.cooldown = 10;
-      }
+    const near = (p, r) => {
+      const dx = ctx.player.x - p.x;
+      const dz = ctx.player.z - p.z;
+      return dx * dx + dz * dz < r * r;
+    };
+    if (t.stage === 'pickup' && near(t.passenger, 6) && ctx.player.car) {
+      t.stage = 'dropoff';
+      if (this.hooks.toast) this.hooks.toast(`Passenger aboard — take them to (${t.dest.x}, ${t.dest.z})`);
+    } else if (t.stage === 'dropoff' && near(t.dest, 9)) {
+      if (this.hooks.award) this.hooks.award(t.fare);
+      if (this.hooks.toast) this.hooks.toast(`Taxi fare +$${t.fare}`);
+      this.taxi = null;
+      this.taxiCooldown = 20;
     }
+  }
+
+  _spawnTaxi() {
+    const roadPoint = () => {
+      const road = pick(this.rng, GRID.roads);
+      const along = -150 + this.rng() * 300;
+      return this.rng() < 0.5 ? { x: road, z: along } : { x: along, z: road };
+    };
+    const passenger = roadPoint();
+    let dest = roadPoint();
+    while (Math.hypot(dest.x - passenger.x, dest.z - passenger.z) < 90) dest = roadPoint();
+    this.taxi = {
+      stage: 'pickup',
+      passenger,
+      dest,
+      fare: TAXI.fareMin + Math.floor(this.rng() * (TAXI.fareMax - TAXI.fareMin)),
+    };
+    if (this.hooks.toast) this.hooks.toast('Taxi passenger waiting — look for the yellow marker.');
   }
 }

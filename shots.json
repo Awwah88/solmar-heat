@@ -1,34 +1,25 @@
 {
   "game": "Solmar Heat",
-  "note": "Screenshots taken in this session with shoot.mjs (headless Chromium, 1280x720). First by name is the cover.",
   "shots": [
     {
-      "bytes": 54115,
-      "description": "Dash in a stolen car on the road grid at wanted level 3, three police cars closing in, mission Sunset Courier active, $150.",
       "file": "1-cover.jpg",
       "scene": "cover",
-      "state": "playing"
+      "caption": "Police chase down the palm-lined east road: 3 wanted stars, Mission 2 live, three cruisers closing in."
     },
     {
-      "bytes": 45750,
-      "description": "Dash on foot on the road grid, mission Hot Wheels active, no wanted level.",
       "file": "2-foot.jpg",
       "scene": "foot",
-      "state": "playing"
+      "caption": "On foot at a city intersection: traffic rolling past, a pedestrian on the pavement, Mission 1 live."
     },
     {
-      "bytes": 51018,
-      "description": "Dash driving on the courier run, mission Sunset Courier active, $150, no wanted level.",
       "file": "3-mission.jpg",
       "scene": "mission",
-      "state": "playing"
+      "caption": "Sunset Courier run: driving the east road toward the first package drop with the HUD and minimap live."
     },
     {
-      "bytes": 61625,
-      "description": "The Solmar Heat title screen over the city.",
       "file": "4-menu.jpg",
       "scene": "menu",
-      "state": "menu"
+      "caption": "Title screen over the city at golden hour: Solmar Bay from above."
     }
   ]
 }
