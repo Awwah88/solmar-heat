@@ -1,1 +1,34 @@
-[{"name":"1-cover.jpg","query":"?shot=cover&seed=1"},{"name":"2-foot.jpg","query":"?shot=foot&seed=1"},{"name":"3-mission.jpg","query":"?shot=mission&seed=1"},{"name":"4-menu.jpg","query":"?shot=menu&seed=1"}]
+{
+  "game": "Solmar Heat",
+  "note": "Screenshots taken in this session with shoot.mjs (headless Chromium, 1280x720). First by name is the cover.",
+  "shots": [
+    {
+      "bytes": 54115,
+      "description": "Dash in a stolen car on the road grid at wanted level 3, three police cars closing in, mission Sunset Courier active, $150.",
+      "file": "1-cover.jpg",
+      "scene": "cover",
+      "state": "playing"
+    },
+    {
+      "bytes": 45750,
+      "description": "Dash on foot on the road grid, mission Hot Wheels active, no wanted level.",
+      "file": "2-foot.jpg",
+      "scene": "foot",
+      "state": "playing"
+    },
+    {
+      "bytes": 51018,
+      "description": "Dash driving on the courier run, mission Sunset Courier active, $150, no wanted level.",
+      "file": "3-mission.jpg",
+      "scene": "mission",
+      "state": "playing"
+    },
+    {
+      "bytes": 61625,
+      "description": "The Solmar Heat title screen over the city.",
+      "file": "4-menu.jpg",
+      "scene": "menu",
+      "state": "menu"
+    }
+  ]
+}
