@@ -1,128 +1,115 @@
-// Wanted level 0-5 and the police who answer it. Police cars spawn near the
-// player, chase, and ram. On foot, getting cornered means Busted.
-import * as THREE from 'three';
-import { GRID, TUNING, makeRng, clamp, wrapAngle } from './config.js';
-import { buildCar } from './vehicles.js';
+// Wanted level 0-5 and the police response. Police cars spawn on nearby
+// roads when the heat rises, chase the player and ram; on foot, a cop who
+// stays on top of the player for a while makes the bust. Wanted decays
+// when no cruiser is close, and the Spray Shop clears it for cash.
+import { ROAD_CENTRES, clamp, dist2d, forwardOf, wrapAngle } from "./config.js";
+import { Car } from "./vehicles.js";
 
 export class Police {
-  constructor(scene, city, seed) {
+  constructor(scene, onBusted, onRam) {
     this.scene = scene;
-    this.city = city;
-    this.rng = makeRng(seed || 31);
+    this.onBusted = onBusted;
+    this.onRam = onRam;
     this.wanted = 0;
     this.policeCars = [];
-    this.lastCrimeAt = -999;
-    this.decayTimer = 0;
-    this.bustedTimer = 0;
-    this.time = 0;
+    this._bustTimer = 0;
+    this._decayTimer = 0;
+    this._spawnCooldown = 0;
   }
 
   setWanted(n, playerPos) {
     this.wanted = clamp(Math.round(n), 0, 5);
-    this.lastCrimeAt = this.time;
     this._syncCars(playerPos);
   }
 
-  commitCrime(amount, playerPos) {
-    this.wanted = clamp(this.wanted + amount, 0, 5);
-    this.lastCrimeAt = this.time;
-    this._syncCars(playerPos);
+  addWanted(n, playerPos) {
+    this.setWanted(this.wanted + n, playerPos);
   }
 
-  clear(playerPos) {
+  clearWanted() {
     this.wanted = 0;
-    this.bustedTimer = 0;
-    this._syncCars(playerPos);
+    for (const c of this.policeCars) c.remove();
+    this.policeCars = [];
+    this._bustTimer = 0;
   }
 
   _syncCars(playerPos) {
-    const want = Math.min(this.wanted, TUNING.maxPolice);
+    const want = Math.min(this.wanted, 5);
     while (this.policeCars.length < want) {
-      const car = buildCar(0x111827, { police: true, kind: 'police' });
-      // Spawn on a road 45-60u away from the player.
-      let x = playerPos.x;
-      let z = playerPos.z;
-      for (let tries = 0; tries < 12; tries++) {
-        const road = GRID.roads[Math.floor(this.rng() * GRID.roads.length)];
-        const along = -162 + this.rng() * 324;
-        if (this.rng() < 0.5) { x = road; z = along; } else { x = along; z = road; }
-        const d = Math.hypot(x - playerPos.x, z - playerPos.z);
-        if (d > 42 && d < 65) break;
-      }
-      car.group.position.set(x, 0, z);
-      car.angle = Math.atan2(playerPos.x - x, playerPos.z - z);
-      car.speed = 10;
-      car.ramCooldown = 0;
-      this.scene.add(car.group);
+      const pos = this._spawnPoint(playerPos);
+      const car = new Car(this.scene, 0x11151c, pos.x, pos.z, Math.atan2(playerPos.x - pos.x, playerPos.z - pos.z), true);
+      car.cruise = 13 + this.wanted * 1.2;
+      car.speed = car.cruise;
+      car.sync();
       this.policeCars.push(car);
     }
     while (this.policeCars.length > want) {
       const car = this.policeCars.pop();
-      this.scene.remove(car.group);
+      car.remove();
     }
   }
 
-  update(dt, player, hooks) {
-    this.time += dt;
-    if (this.wanted <= 0) return;
-    // Wanted decays when the player has been quiet and no cruiser is near.
-    const near = this.policeCars.some((c) => {
-      const dx = c.group.position.x - player.x;
-      const dz = c.group.position.z - player.z;
-      return dx * dx + dz * dz < 35 * 35;
-    });
-    if (this.time - this.lastCrimeAt > 15 && !near) {
-      this.decayTimer += dt;
-      if (this.decayTimer > 12) {
-        this.decayTimer = 0;
-        this.setWanted(this.wanted - 1, player);
-      }
-    } else {
-      this.decayTimer = 0;
+  _spawnPoint(playerPos) {
+    const near = (v) => ROAD_CENTRES.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+    const cx = near(playerPos.x);
+    const cz = near(playerPos.z);
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    if (Math.random() < 0.5) {
+      return { x: clamp(cx + dir * 36, -162, 162), z: cz + (Math.random() - 0.5) * 10 };
     }
-    this._syncCars(player);
-    let cornered = false;
+    return { x: cx + (Math.random() - 0.5) * 10, z: clamp(cz + dir * 36, -162, 162) };
+  }
+
+  update(dt, playerPos, playerHeading, playerInCar, playerSpeed) {
+    this._spawnCooldown -= dt;
+    if (this.wanted > 0 && this._spawnCooldown <= 0) {
+      this._syncCars(playerPos);
+      this._spawnCooldown = 1.5;
+    }
+    let nearest = 999;
     for (const car of this.policeCars) {
-      const p = car.group.position;
-      const dx = player.x - p.x;
-      const dz = player.z - p.z;
-      const d = Math.sqrt(dx * dx + dz * dz);
-      const desired = Math.atan2(dx, dz);
-      const err = wrapAngle(desired - car.angle);
-      car.angle += clamp(err, -2.6 * dt, 2.6 * dt);
-      const targetSpeed = d > 6 ? 23 : 12;
-      car.speed += clamp(targetSpeed - car.speed, -18 * dt, 10 * dt);
-      p.x += Math.sin(car.angle) * car.speed * dt;
-      p.z += Math.cos(car.angle) * car.speed * dt;
-      const fixed = this.city.resolveCircle(p.x, p.z, TUNING.carRadius);
-      p.x = fixed.x;
-      p.z = fixed.z;
-      car.group.rotation.y = car.angle;
-      for (const w of car.wheels) w.rotation.x += (car.speed * dt) / 0.42;
-      car.ramCooldown = Math.max(0, (car.ramCooldown || 0) - dt);
-      // Ram the player's car, or corner the player on foot.
-      if (d < 4.6 && car.ramCooldown <= 0) {
-        car.ramCooldown = 1.1;
-        car.speed *= 0.55;
-        if (hooks && hooks.onRam) hooks.onRam(d);
-      }
-      if (!player.car && d < 3.2) cornered = true;
-      // A cruiser that lost the player far away respawns closer.
-      if (d > 130) {
-        const road = GRID.roads[Math.floor(this.rng() * GRID.roads.length)];
-        const along = player.z + (this.rng() < 0.5 ? -50 : 50);
-        if (this.rng() < 0.5) { p.x = road; p.z = clamp(along, -170, 170); }
-        else { p.x = clamp(player.x + (this.rng() < 0.5 ? -50 : 50), -170, 170); p.z = road; }
+      const d = dist2d(car.x, car.z, playerPos.x, playerPos.z);
+      nearest = Math.min(nearest, d);
+      const desired = Math.atan2(playerPos.x - car.x, playerPos.z - car.z);
+      const err = wrapAngle(desired - car.heading);
+      car.heading += clamp(err, -2.6 * dt, 2.6 * dt);
+      const targetSpeed = d > 60 ? car.cruise + 5 : car.cruise;
+      const f = forwardOf(car.heading);
+      car.group.position.x += f.x * targetSpeed * dt;
+      car.group.position.z += f.z * targetSpeed * dt;
+      car.group.position.x = clamp(car.group.position.x, -178, 178);
+      car.group.position.z = clamp(car.group.position.z, -178, 178);
+      car.speed = targetSpeed;
+      car.sync();
+      if (d < 3.4) {
+        // Ram: shove the player and hurt them.
+        const push = forwardOf(Math.atan2(playerPos.x - car.x, playerPos.z - car.z));
+        if (this.onRam) this.onRam(push.x, push.z, playerInCar ? 7 : 12);
+        car.heading += 0.6;
+        const back = forwardOf(car.heading + Math.PI);
+        car.group.position.x += back.x * 4 * dt;
+        car.group.position.z += back.z * 4 * dt;
       }
     }
-    if (cornered) {
-      this.bustedTimer += dt;
-      if (this.bustedTimer > 1.2 && hooks && hooks.onBusted) {
-        this.bustedTimer = 0;
-        hooks.onBusted();
+    // Busted: a cruiser sits on the on-foot player.
+    if (!playerInCar && this.wanted > 0 && nearest < 2.6) {
+      this._bustTimer += dt;
+      if (this._bustTimer > 1.5) {
+        this._bustTimer = 0;
+        if (this.onBusted) this.onBusted();
       }
     } else {
-      this.bustedTimer = Math.max(0, this.bustedTimer - dt * 2);
+      this._bustTimer = Math.max(0, this._bustTimer - dt * 2);
+    }
+    // Wanted decays when no cruiser is anywhere near.
+    if (this.wanted > 0 && nearest > 32) {
+      this._decayTimer += dt;
+      if (this._decayTimer > 25) {
+        this._decayTimer = 0;
+        this.setWanted(this.wanted - 1, playerPos);
+      }
+    } else {
+      this._decayTimer = 0;
     }
   }
 }

@@ -1,42 +1,57 @@
-// localStorage save / load / autosave. Nothing leaves the browser.
-const KEY = 'solmar-heat-v1';
+// localStorage save / autosave. The save stores the mission state (done
+// list + bonus), health, position and the cash counters; loading restores
+// them through Missions.setDone so a mission can never pay twice.
+const KEY = "solmar-heat-save-v1";
 
-export function saveGame(state) {
-  try {
-    const data = {
-      money: state.money,
-      health: state.health,
-      done: state.done,
-      pistol: state.pistol,
-      x: state.x,
-      z: state.z,
-      heading: state.heading,
-      wanted: state.wanted,
-      savedAt: Date.now(),
-    };
-    localStorage.setItem(KEY, JSON.stringify(data));
-    return true;
-  } catch (err) {
-    return false;
+export class Save {
+  has() {
+    try {
+      return !!window.localStorage.getItem(KEY);
+    } catch {
+      return false;
+    }
   }
-}
 
-export function loadGame() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (typeof data.money !== 'number' || !Array.isArray(data.done)) return null;
-    return data;
-  } catch (err) {
-    return null;
+  save(game) {
+    try {
+      const data = {
+        v: 1,
+        done: game.missions.done,
+        bonus: game.missions.bonus,
+        health: game.combat.health,
+        pistol: game.combat.pistol,
+        x: game.player.x,
+        z: game.player.z,
+        heading: game.player.heading,
+        pickupCash: game.pickupCash,
+        sprayPaid: game.sprayPaid,
+        fines: game.fines,
+        taken: game.pickups.map((p) => p.taken),
+        savedAt: Date.now(),
+      };
+      window.localStorage.setItem(KEY, JSON.stringify(data));
+    } catch {
+      // storage may be unavailable in some contexts; the game plays on
+    }
   }
-}
 
-export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch (err) { /* silent */ }
-}
+  load() {
+    try {
+      const raw = window.localStorage.getItem(KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || data.v !== 1 || !Array.isArray(data.done)) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  }
 
-export function hasSave() {
-  return loadGame() !== null;
+  clear() {
+    try {
+      window.localStorage.removeItem(KEY);
+    } catch {
+      // ignore
+    }
+  }
 }
