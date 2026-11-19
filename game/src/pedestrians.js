@@ -1,173 +1,94 @@
-// Pedestrians for Solmar Heat: 24 walkers strolling the sidewalks, who flee
-// when the player gets violent or bears down on them in a car.
+// Solmar Heat — pedestrians. 24 walkers stroll the sidewalks on their own
+// routes, scatter when a car barrels at them or the wanted level spikes,
+// and a few linger around the new Casino Solmar and Solmar Boardwalk.
+// A walker can be punched down (combat.js) and gets back up after a while.
+import * as THREE from 'three';
+import { ROADS } from './config.js';
 
-import { BLOCKS, clamp, pick } from './config.js';
+const SHIRTS = [0xe86a1c, 0x2f7fd9, 0x22a06b, 0xd946ef, 0xf2c230, 0xe8e8e8, 0x14b8a6, 0x7c3aed];
 
-function walkerMesh(THREE, color) {
-  const g = new THREE.Group();
-  const skin = new THREE.MeshLambertMaterial({ color: 0xd8a077 });
-  const shirt = new THREE.MeshLambertMaterial({ color });
-  const legs = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.22, 0.26, 0.85, 8),
-    new THREE.MeshLambertMaterial({ color: 0x2c3242 }),
-  );
-  legs.position.y = 0.43;
-  g.add(legs);
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.75, 8), shirt);
-  torso.position.y = 1.2;
-  g.add(torso);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), skin);
-  head.position.y = 1.82;
-  g.add(head);
-  return g;
+export class Pedestrian {
+  constructor(scene, x, z) {
+    this.group = new THREE.Group();
+    const shirt = SHIRTS[Math.floor(Math.random() * SHIRTS.length)];
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.4), new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.9 }));
+    body.position.y = 1.05; body.castShadow = true;
+    this.group.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), new THREE.MeshStandardMaterial({ color: 0xe8b98a, roughness: 0.8 }));
+    head.position.y = 1.85;
+    this.group.add(head);
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.35), new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.95 }));
+    legs.position.y = 0.3;
+    this.group.add(legs);
+    this.group.position.set(x, 0, z);
+    scene.add(this.group);
+    this.heading = Math.random() * Math.PI * 2;
+    this.speed = 1.1 + Math.random() * 0.9;
+    this.down = 0;
+    this.fleeing = 0;
+    this.scene = scene;
+  }
+  update(dt, playerPos, playerSpeed, wanted) {
+    if (this.down > 0) {
+      this.down -= dt;
+      this.group.rotation.x = this.down > 0 ? Math.PI / 2 : 0;
+      this.group.position.y = this.down > 0 ? 0.4 : 0;
+      return;
+    }
+    const dx = this.group.position.x - playerPos.x;
+    const dz = this.group.position.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if ((d < 7 && playerSpeed > 8) || (wanted >= 3 && d < 12)) {
+      this.fleeing = 1.5;
+    }
+    if (this.fleeing > 0) {
+      this.fleeing -= dt;
+      this.heading = Math.atan2(dx, dz);
+      const s = 3.4;
+      this.group.position.x += Math.sin(this.heading) * s * dt;
+      this.group.position.z += Math.cos(this.heading) * s * dt;
+    } else {
+      // Stroll along the sidewalk: keep to a road line, offset 7u.
+      this.group.position.x += Math.sin(this.heading) * this.speed * dt;
+      this.group.position.z += Math.cos(this.heading) * this.speed * dt;
+      if (Math.abs(this.group.position.x) > 178 || Math.abs(this.group.position.z) > 178) this.heading += Math.PI;
+      if (Math.random() < dt * 0.05) this.heading += (Math.random() - 0.5) * 1.2;
+    }
+    this.group.rotation.y = this.heading;
+    // Gentle walk bob.
+    this.group.children[0].position.y = 1.05 + Math.abs(Math.sin(Date.now() * 0.006 + this.heading)) * 0.05;
+  }
+  knockDown() { this.down = 4; }
 }
 
-export class PedestrianSystem {
-  constructor(THREE, scene, rng) {
-    this.THREE = THREE;
+export class Pedestrians {
+  constructor(scene) {
     this.scene = scene;
-    this.rng = rng;
-    this.walkers = [];
-    const shirts = [0xd84a4a, 0x4a7dd8, 0x4ad87a, 0xd8c84a, 0xd84ac9, 0x7a4fd0, 0xe8e8e8, 0x3a3a3a];
+    this.list = [];
     for (let i = 0; i < 24; i++) {
-      const bx = pick(rng, BLOCKS);
-      const bz = pick(rng, BLOCKS);
-      const group = walkerMesh(THREE, pick(rng, shirts));
-      scene.add(group);
-      // Walkers patrol the sidewalk ring of one block: a 26u square, 13u
-      // from the block centre, so they never step onto a road.
-      const w = {
-        group,
-        blockX: bx,
-        blockZ: bz,
-        s: rng() * 104,
-        dir: rng() < 0.5 ? 1 : -1,
-        speed: 1.1 + rng() * 0.9,
-        state: 'walk',
-        fleeT: 0,
-        heading: 0,
-        taxi: false,
-      };
-      this._placeOnRing(w);
-      this.walkers.push(w);
+      const road = ROADS[i % ROADS.length];
+      const along = -160 + ((i * 67) % 320);
+      const vertical = i % 2 === 0;
+      const x = vertical ? road + 7 : along;
+      const z = vertical ? along : road + 7;
+      this.list.push(new Pedestrian(scene, x, z));
     }
+    // Casino crowd and boardwalk strollers (new in R16).
+    this.list.push(new Pedestrian(scene, 122, -48));
+    this.list.push(new Pedestrian(scene, 130, -60));
+    this.list.push(new Pedestrian(scene, 166, 108));
+    this.list.push(new Pedestrian(scene, 170, 140));
   }
-
-  // Position (and heading) of a walker from its ring parameter s in [0,104).
-  _placeOnRing(w) {
-    const R = 13;
-    const s = ((w.s % 104) + 104) % 104;
-    const { blockX: bx, blockZ: bz } = w;
-    let x = bx;
-    let z = bz;
-    if (s < 26) { x = bx - R + s; z = bz - R; w.heading = w.dir > 0 ? Math.PI / 2 : -Math.PI / 2; }
-    else if (s < 52) { x = bx + R; z = bz - R + (s - 26); w.heading = w.dir > 0 ? Math.PI : 0; }
-    else if (s < 78) { x = bx + R - (s - 52); z = bz + R; w.heading = w.dir > 0 ? -Math.PI / 2 : Math.PI / 2; }
-    else { x = bx - R; z = bz + R - (s - 78); w.heading = w.dir > 0 ? 0 : Math.PI; }
-    w.group.position.set(x, 0, z);
-    w.group.rotation.y = w.heading;
+  update(dt, playerPos, playerSpeed, wanted) {
+    for (const p of this.list) p.update(dt, playerPos, playerSpeed, wanted);
   }
-
-  // Snap a fled walker back onto its block's ring, nearest edge.
-  _snapToRing(w) {
-    const R = 13;
-    const dx = clamp(w.group.position.x - w.blockX, -R, R);
-    const dz = clamp(w.group.position.z - w.blockZ, -R, R);
-    const opts = [
-      { s: dx + R, edge: 0 },
-      { s: 26 + (dz + R), edge: 1 },
-      { s: 52 + (R - dx), edge: 2 },
-      { s: 78 + (R - dz), edge: 3 },
-    ];
-    let best = opts[0];
-    let bestD = Infinity;
-    for (const o of opts) {
-      const p = { x: 0, z: 0 };
-      if (o.edge === 0) { p.x = w.blockX - R + o.s; p.z = w.blockZ - R; }
-      if (o.edge === 1) { p.x = w.blockX + R; p.z = w.blockZ - R + (o.s - 26); }
-      if (o.edge === 2) { p.x = w.blockX + R - (o.s - 52); p.z = w.blockZ + R; }
-      if (o.edge === 3) { p.x = w.blockX - R; p.z = w.blockZ + R - (o.s - 78); }
-      const d = (p.x - w.group.position.x) ** 2 + (p.z - w.group.position.z) ** 2;
-      if (d < bestD) { bestD = d; best = o; }
-    }
-    w.s = best.s;
-    this._placeOnRing(w);
-  }
-
-  // Mark a walker as a taxi-rank waiter (stands still, takes fares).
-  makeTaxi(index, x, z) {
-    const w = this.walkers[index % this.walkers.length];
-    w.group.position.set(x, 0, z);
-    w.state = 'taxi';
-    w.speed = 0;
-    w.taxi = true;
-    const sign = new this.THREE.Mesh(
-      new this.THREE.BoxGeometry(0.7, 0.7, 0.1),
-      new this.THREE.MeshBasicMaterial({ color: 0xffd23e }),
-    );
-    sign.position.set(0, 2.4, 0);
-    w.group.add(sign);
-    return w;
-  }
-
-  fleeFrom(x, z, radius = 8) {
-    for (const w of this.walkers) {
-      if (w.taxi) continue;
-      const dx = w.group.position.x - x;
-      const dz = w.group.position.z - z;
-      if (dx * dx + dz * dz < radius * radius) {
-        w.state = 'flee';
-        w.fleeT = 3;
-        w.heading = Math.atan2(dx, dz);
-        w.speed = 5.5;
-      }
-    }
-  }
-
-  update(dt, playerX, playerZ, playerInCar, playerSpeed) {
-    for (const w of this.walkers) {
-      if (w.state === 'taxi') continue;
-      if (w.state === 'flee') {
-        w.fleeT -= dt;
-        const step = w.speed * dt;
-        w.group.position.x = clamp(w.group.position.x + Math.sin(w.heading) * step, -176, 176);
-        w.group.position.z = clamp(w.group.position.z + Math.cos(w.heading) * step, -176, 176);
-        w.group.rotation.y = w.heading;
-        if (w.fleeT <= 0) {
-          w.state = 'walk';
-          w.speed = 1.1 + this.rng() * 0.9;
-          this._snapToRing(w);
-        }
-        continue;
-      }
-      if (playerInCar && playerSpeed > 8) {
-        const dx = w.group.position.x - playerX;
-        const dz = w.group.position.z - playerZ;
-        if (dx * dx + dz * dz < 100) {
-          w.state = 'flee';
-          w.fleeT = 2;
-          w.heading = Math.atan2(dx, dz);
-          w.speed = 5.5;
-          continue;
-        }
-      }
-      w.s += w.dir * w.speed * dt;
-      this._placeOnRing(w);
-      const t = performance.now() / 240 + w.group.position.x;
-      w.group.position.y = Math.abs(Math.sin(t)) * 0.05;
-    }
-  }
-
-  nearest(x, z, maxD, includeTaxi = false) {
+  nearest(x, z, maxD) {
     let best = null;
-    let bestD = maxD;
-    for (const w of this.walkers) {
-      if (w.taxi && !includeTaxi) continue;
-      const d = Math.hypot(w.group.position.x - x, w.group.position.z - z);
-      if (d < bestD) {
-        bestD = d;
-        best = w;
-      }
+    let bd = maxD;
+    for (const p of this.list) {
+      if (p.down > 0) continue;
+      const d = Math.hypot(p.group.position.x - x, p.group.position.z - z);
+      if (d < bd) { bd = d; best = p; }
     }
     return best;
   }
