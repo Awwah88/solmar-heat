@@ -1,95 +1,119 @@
-// Solmar Heat — pedestrians. 24 walkers stroll the sidewalks on their own
-// routes, scatter when a car barrels at them or the wanted level spikes,
-// and a few linger around the new Casino Solmar and Solmar Boardwalk.
-// A walker can be punched down (combat.js) and gets back up after a while.
+// Solmar Heat — pedestrians (Round 17). 24 walkers stroll the sidewalks and
+// flee when a car bears down on them or a shot is fired. Bank, casino and
+// airport crowds use brighter clothes so those districts read at a glance.
 import * as THREE from 'three';
-import { ROADS } from './config.js';
+import { ROADS, BLOCKS, mulberry32, dist2d } from './config.js';
 
-const SHIRTS = [0xe86a1c, 0x2f7fd9, 0x22a06b, 0xd946ef, 0xf2c230, 0xe8e8e8, 0x14b8a6, 0x7c3aed];
-
-export class Pedestrian {
-  constructor(scene, x, z) {
-    this.group = new THREE.Group();
-    const shirt = SHIRTS[Math.floor(Math.random() * SHIRTS.length)];
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.4), new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.9 }));
-    body.position.y = 1.05; body.castShadow = true;
-    this.group.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), new THREE.MeshStandardMaterial({ color: 0xe8b98a, roughness: 0.8 }));
-    head.position.y = 1.85;
-    this.group.add(head);
-    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.35), new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.95 }));
-    legs.position.y = 0.3;
-    this.group.add(legs);
-    this.group.position.set(x, 0, z);
-    scene.add(this.group);
-    this.heading = Math.random() * Math.PI * 2;
-    this.speed = 1.1 + Math.random() * 0.9;
-    this.down = 0;
-    this.fleeing = 0;
-    this.scene = scene;
-  }
-  update(dt, playerPos, playerSpeed, wanted) {
-    if (this.down > 0) {
-      this.down -= dt;
-      this.group.rotation.x = this.down > 0 ? Math.PI / 2 : 0;
-      this.group.position.y = this.down > 0 ? 0.4 : 0;
-      return;
-    }
-    const dx = this.group.position.x - playerPos.x;
-    const dz = this.group.position.z - playerPos.z;
-    const d = Math.hypot(dx, dz);
-    if ((d < 7 && playerSpeed > 8) || (wanted >= 3 && d < 12)) {
-      this.fleeing = 1.5;
-    }
-    if (this.fleeing > 0) {
-      this.fleeing -= dt;
-      this.heading = Math.atan2(dx, dz);
-      const s = 3.4;
-      this.group.position.x += Math.sin(this.heading) * s * dt;
-      this.group.position.z += Math.cos(this.heading) * s * dt;
-    } else {
-      // Stroll along the sidewalk: keep to a road line, offset 7u.
-      this.group.position.x += Math.sin(this.heading) * this.speed * dt;
-      this.group.position.z += Math.cos(this.heading) * this.speed * dt;
-      if (Math.abs(this.group.position.x) > 178 || Math.abs(this.group.position.z) > 178) this.heading += Math.PI;
-      if (Math.random() < dt * 0.05) this.heading += (Math.random() - 0.5) * 1.2;
-    }
-    this.group.rotation.y = this.heading;
-    // Gentle walk bob.
-    this.group.children[0].position.y = 1.05 + Math.abs(Math.sin(Date.now() * 0.006 + this.heading)) * 0.05;
-  }
-  knockDown() { this.down = 4; }
-}
+const SHIRT_COLORS = [0xd84a4a, 0x4a7dd8, 0x4ad87a, 0xe0c23a, 0x9a4ad8, 0xd87a2a, 0x3ec8c8, 0xe8e8e8];
 
 export class Pedestrians {
-  constructor(scene) {
+  constructor(scene, city) {
     this.scene = scene;
-    this.list = [];
+    this.walkers = [];
+    const rng = mulberry32(4242);
+    const districts = [
+      { cx: 36, cz: 144, color: 0x2a2a3a }, // bank crowd: dark suits
+      { cx: 108, cz: -72, color: 0xd84a9a }, // casino crowd: bright
+      { cx: 144, cz: -144, color: 0x3a6a9a }, // airport crowd: blue
+    ];
     for (let i = 0; i < 24; i++) {
-      const road = ROADS[i % ROADS.length];
-      const along = -160 + ((i * 67) % 320);
-      const vertical = i % 2 === 0;
-      const x = vertical ? road + 7 : along;
-      const z = vertical ? along : road + 7;
-      this.list.push(new Pedestrian(scene, x, z));
+      const bx = BLOCKS[Math.floor(rng() * BLOCKS.length)];
+      const bz = BLOCKS[Math.floor(rng() * BLOCKS.length)];
+      const district = districts.find((d) => Math.abs(d.cx - bx) < 40 && Math.abs(d.cz - bz) < 40);
+      const shirt = district ? district.color : SHIRT_COLORS[Math.floor(rng() * SHIRT_COLORS.length)];
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.7, 1.3, 0.45),
+        new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.9 }),
+      );
+      body.position.y = 1.05;
+      body.castShadow = true;
+      g.add(body);
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.32, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xd9a986, roughness: 0.8 }),
+      );
+      head.position.y = 1.95;
+      g.add(head);
+      const legs = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.8, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x2a2d36, roughness: 1 }),
+      );
+      legs.position.y = 0.4;
+      g.add(legs);
+      const x = bx + (rng() - 0.5) * 20;
+      const z = bz + (rng() - 0.5) * 20;
+      g.position.set(x, 0, z);
+      scene.add(g);
+      this.walkers.push({
+        group: g,
+        x,
+        z,
+        heading: rng() * Math.PI * 2,
+        speed: 1 + rng() * 0.8,
+        target: null,
+        fleeing: 0,
+        panic: 0,
+      });
     }
-    // Casino crowd and boardwalk strollers (new in R16).
-    this.list.push(new Pedestrian(scene, 122, -48));
-    this.list.push(new Pedestrian(scene, 130, -60));
-    this.list.push(new Pedestrian(scene, 166, 108));
-    this.list.push(new Pedestrian(scene, 170, 140));
   }
-  update(dt, playerPos, playerSpeed, wanted) {
-    for (const p of this.list) p.update(dt, playerPos, playerSpeed, wanted);
+
+  _pickTarget(w) {
+    // A nearby sidewalk point: walk along the block edge, never through roads.
+    const bx = Math.round(w.x / 36) * 36;
+    const bz = Math.round(w.z / 36) * 36;
+    const side = Math.random() < 0.5;
+    return {
+      x: side ? bx + (Math.random() < 0.5 ? -13 : 13) : bx + (Math.random() - 0.5) * 22,
+      z: side ? bz + (Math.random() - 0.5) * 22 : bz + (Math.random() < 0.5 ? -13 : 13),
+    };
   }
-  nearest(x, z, maxD) {
-    let best = null;
-    let bd = maxD;
-    for (const p of this.list) {
-      if (p.down > 0) continue;
-      const d = Math.hypot(p.group.position.x - x, p.group.position.z - z);
-      if (d < bd) { bd = d; best = p; }
+
+  scare(x, z, radius) {
+    for (const w of this.walkers) {
+      if (dist2d(w.x, w.z, x, z) < radius) {
+        w.fleeing = 2.5;
+        w.panic = 1;
+      }
     }
-    return best;
+  }
+
+  update(dt, playerPos, playerSpeed, inCar) {
+    for (const w of this.walkers) {
+      // Flee from a fast car or the player on foot at close range.
+      const dPlayer = dist2d(w.x, w.z, playerPos.x, playerPos.z);
+      if ((inCar && dPlayer < 9 && playerSpeed > 6) || dPlayer < 2.2) {
+        w.fleeing = 2.0;
+      }
+      let tx;
+      let tz;
+      let speed = w.speed;
+      if (w.fleeing > 0) {
+        w.fleeing -= dt;
+        const away = Math.atan2(w.x - playerPos.x, w.z - playerPos.z);
+        tx = w.x + Math.sin(away) * 10;
+        tz = w.z + Math.cos(away) * 10;
+        speed = 3.4;
+      } else {
+        if (!w.target || dist2d(w.x, w.z, w.target.x, w.target.z) < 1.5) {
+          w.target = this._pickTarget(w);
+        }
+        tx = w.target.x;
+        tz = w.target.z;
+      }
+      const desired = Math.atan2(tx - w.x, tz - w.z);
+      let err = desired - w.heading;
+      while (err > Math.PI) err -= Math.PI * 2;
+      while (err < -Math.PI) err += Math.PI * 2;
+      w.heading += Math.max(-2.4 * dt, Math.min(2.4 * dt, err));
+      w.x += Math.sin(w.heading) * speed * dt;
+      w.z += Math.cos(w.heading) * speed * dt;
+      w.x = Math.max(-176, Math.min(176, w.x));
+      w.z = Math.max(-176, Math.min(176, w.z));
+      w.group.position.set(w.x, 0, w.z);
+      w.group.rotation.y = -w.heading + Math.PI / 2;
+      // Simple walk bob.
+      w.group.position.y = Math.abs(Math.sin(Date.now() * 0.006 + w.x)) * 0.06;
+    }
   }
 }

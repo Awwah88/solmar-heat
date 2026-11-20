@@ -1,57 +1,57 @@
-// Solmar Heat — screenshot staging for ?shot=. Each shot is a real render
-// of the running game, staged in-session: the player is placed first,
-// then the wanted level is set (police spawn near the player), then the
-// mission is forced. The menu shot never calls showPlaying().
-// cover: police chase in a car, mission 2, wanted 3, near the Casino.
-// foot: on foot at a city intersection, mission 1.
-// mission: courier run in the red sedan, package beacon ahead.
-// menu: title screen over the orbiting city camera.
-import { LANDMARKS } from './config.js';
+// Solmar Heat — ?shot= staging for screenshots (Round 17).
+// Each shot is a genuine render of the running game. Player position is
+// set BEFORE setWanted() (police spawn near the player), and the menu shot
+// never calls showPlaying().
+import { LANDMARKS, PARKED } from './config.js';
 
-export function applyShot(game) {
-  const params = new URLSearchParams(window.location.search);
-  const shot = params.get('shot');
-  if (!shot) return false;
-  game.audio.ensure();
-  if (shot === 'menu') {
-    game.showMenu();
-    return true;
+export class Shots {
+  constructor(game) {
+    this.game = game;
   }
-  game.startNewGame();
-  if (shot === 'cover') {
-    game.teleport(118, -54);
-    game.player.heading = Math.PI / 2;
-    game.missions.forceStage(2, 0);
-    game.missions.delivered = new Set([0]);
-    game.player.car = game.parked.redSedan;
-    game.parked.redSedan.group.position.set(118, 0, -54);
-    game.parked.redSedan.heading = Math.PI / 2;
-    game.parked.redSedan.group.rotation.y = Math.PI / 2;
-    game.player.mesh.visible = false;
-    game.police.setWanted(3);
-    game.money = 320;
-  } else if (shot === 'foot') {
-    game.teleport(54, 90);
-    game.player.heading = Math.PI;
-    game.missions.forceStage(1, 0);
-    game.money = 40;
-  } else if (shot === 'mission') {
-    game.teleport(54, 90);
-    game.player.heading = 0;
-    game.missions.forceStage(2, 0);
-    game.player.car = game.parked.redSedan;
-    game.parked.redSedan.group.position.set(54, 0, 90);
-    game.parked.redSedan.heading = 0;
-    game.parked.redSedan.group.rotation.y = 0;
-    game.player.mesh.visible = false;
-    game.money = 175;
-  } else if (shot === 'casino') {
-    game.teleport(126, -54);
-    game.player.heading = Math.PI / 2;
-    game.missions.forceStage(5, 0);
-    game.missions.setDone([1, 2, 3, 4]);
-    game.money = 1150;
+
+  apply(name) {
+    const g = this.game;
+    const putPlayer = (x, z, heading, inCarKind) => {
+      g.player.x = x;
+      g.player.z = z;
+      g.player.heading = heading;
+      if (inCarKind) {
+        const car = g.parked.all.find((c) => c.kind === inCarKind) || g.traffic.cars[0];
+        g.enterCar(car, true);
+      }
+      g.updateCamera(0);
+    };
+    if (name === 'cover') {
+      // Dusk chase: in the armored van by the Bank, 4 stars, M6 live.
+      putPlayer(54, 100, Math.PI, 'van');
+      g.missions.startMission(6);
+      g.missions.stage = 1;
+      g.police.setWanted(4);
+      g.missions.vaultProgress = 5;
+      g.state = 'playing';
+      g.hud.showPlaying();
+    } else if (name === 'foot') {
+      // On foot at the Marina, red sedan ahead, M1 objective.
+      putPlayer(140, -126, Math.PI / 2, null);
+      g.missions.startMission(1);
+      g.police.setWanted(0);
+      g.state = 'playing';
+      g.hud.showPlaying();
+    } else if (name === 'mission') {
+      // M6 vault crack: van parked at the Bank dock, police closing in.
+      g.parked.van.place(54, 138, 0);
+      putPlayer(54, 138, 0, 'van');
+      g.missions.startMission(6);
+      g.missions.stage = 1;
+      g.missions.vaultProgress = 6.5;
+      g.police.setWanted(4);
+      g.state = 'playing';
+      g.hud.showPlaying();
+    } else if (name === 'menu') {
+      // Title screen over a slow city orbit — no playing state.
+      g.state = 'menu';
+      g.hud.showMenu();
+      g.menuOrbit = true;
+    }
   }
-  game.hud.showPlaying();
-  return true;
 }
