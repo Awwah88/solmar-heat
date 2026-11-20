@@ -1,57 +1,76 @@
-// Solmar Heat — keyboard + mouse input. One job: turn raw DOM events into
-// a clean per-frame state (axes, held keys, edge-triggered presses) that
-// world.js, combat.js and the menus can read without touching events.
+// Solmar Heat — keyboard input (Round 17).
+// Tracks held keys and edge-triggered presses. W/S drive, A/D steer
+// (A turns left = heading increases), E enters/exits cars, F punches or
+// fires the pistol, R starts a street race near a race marker, Space is
+// the handbrake, M mutes, Escape pauses.
+
+const STEER_LEFT = ['KeyA', 'ArrowLeft'];
+const STEER_RIGHT = ['KeyD', 'ArrowRight'];
+const FORWARD = ['KeyW', 'ArrowUp'];
+const REVERSE = ['KeyS', 'ArrowDown'];
+
 export class Input {
   constructor() {
-    this.keys = new Set();
+    this.down = new Set();
     this.pressed = new Set();
-    this.mouseDown = false;
-    this.mousePressed = false;
-    this.mouseX = 0;
-    this.mouseY = 0;
     this.enabled = true;
-    window.addEventListener('keydown', (e) => {
+    this._onDown = (e) => {
       if (!this.enabled) return;
       if (e.code === 'Space') e.preventDefault();
       if (!e.repeat) this.pressed.add(e.code);
-      this.keys.add(e.code);
-    });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => { this.keys.clear(); });
-    window.addEventListener('mousedown', (e) => {
-      this.mouseDown = true;
-      this.mousePressed = true;
-      this.mouseX = e.clientX;
-      this.mouseY = e.clientY;
-    });
-    window.addEventListener('mouseup', () => { this.mouseDown = false; });
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.keys.clear();
-    });
+      this.down.add(e.code);
+    };
+    this._onUp = (e) => {
+      this.down.delete(e.code);
+    };
+    this._onBlur = () => {
+      this.down.clear();
+    };
+    window.addEventListener('keydown', this._onDown);
+    window.addEventListener('keyup', this._onUp);
+    window.addEventListener('blur', this._onBlur);
   }
-  get axes() {
-    // x: -1 = D (right), +1 = A (left). y: +1 = W (forward), -1 = S (back).
-    let x = 0;
-    let y = 0;
-    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x += 1;
-    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) x -= 1;
-    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) y += 1;
-    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) y -= 1;
-    return { x, y };
+
+  isDown(code) {
+    return this.down.has(code);
   }
-  get sprint() { return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'); }
-  get interact() { return this.consume('KeyE'); }
-  get punch() { return this.consume('Space') || this.consumeMouse(); }
-  get shoot() { return this.consume('KeyF'); }
-  get pause() { return this.consume('Escape') || this.consume('KeyP'); }
-  get horn() { return this.keys.has('KeyH'); }
-  consume(code) {
-    if (this.pressed.has(code)) { this.pressed.delete(code); return true; }
-    return false;
+
+  // True once per physical press; consumed at the end of each frame.
+  wasPressed(code) {
+    return this.pressed.has(code);
   }
-  consumeMouse() {
-    if (this.mousePressed) { this.mousePressed = false; return true; }
-    return false;
+
+  endFrame() {
+    this.pressed.clear();
   }
-  endFrame() { this.pressed.clear(); this.mousePressed = false; }
+
+  // -1 (right) .. +1 (left). A/Left increases heading.
+  steerAxis() {
+    let v = 0;
+    if (STEER_LEFT.some((c) => this.down.has(c))) v += 1;
+    if (STEER_RIGHT.some((c) => this.down.has(c))) v -= 1;
+    return v;
+  }
+
+  // +1 forward, -1 reverse.
+  driveAxis() {
+    let v = 0;
+    if (FORWARD.some((c) => this.down.has(c))) v += 1;
+    if (REVERSE.some((c) => this.down.has(c))) v -= 1;
+    return v;
+  }
+
+  handbrake() {
+    return this.down.has('Space');
+  }
+
+  sprint() {
+    return this.down.has('ShiftLeft') || this.down.has('ShiftRight');
+  }
+
+  detach() {
+    window.removeEventListener('keydown', this._onDown);
+    window.removeEventListener('keyup', this._onUp);
+    window.removeEventListener('blur', this._onBlur);
+  }
 }

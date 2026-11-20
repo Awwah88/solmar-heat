@@ -3,23 +3,23 @@
   "shots": [
     {
       "file": "1-cover.jpg",
-      "title": "Police chase at Casino Solmar",
-      "description": "Dana in the red sedan on a courier run, wanted level 3, police closing in near the new Casino Solmar — mission, minimap and HUD live."
+      "title": "The Solmar Bank Job — dusk chase",
+      "description": "Dana in the armored van outside the Solmar Bank on Mission 6, wanted level 4, four police cars closing in at dusk — mission objective, minimap and HUD live."
     },
     {
       "file": "2-foot.jpg",
-      "title": "On foot in Solmar Bay",
-      "description": "Dana on foot at a city intersection on Mission 1, traffic and pedestrians around her, HUD and minimap live."
+      "title": "On foot at the Marina",
+      "description": "Dana on foot at the Marina Garage on Mission 1, the red sedan ahead, traffic and pedestrians around her, HUD and minimap live."
     },
     {
       "file": "3-mission.jpg",
-      "title": "Sunset Courier run",
-      "description": "Mission 2 in progress: Dana driving the red sedan toward the next package beacon, courier timer on the HUD."
+      "title": "Cracking the Bank vault",
+      "description": "Mission 6 in progress: Dana holds the armored van at the Bank vault dock while the crack timer runs and police close in under a 4-star wanted level."
     },
     {
       "file": "4-menu.jpg",
-      "title": "Title menu over the city",
-      "description": "The Solmar Heat title menu over the orbiting city camera, with the mission list and controls."
+      "title": "Title menu over the city at dusk",
+      "description": "The Solmar Heat title menu over the slow orbiting dusk camera of the city, with the story, the six missions and the controls."
     }
   ]
 }
