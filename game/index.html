@@ -3,96 +3,94 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solmar Heat — Open-World Crime in Solmar Bay</title>
+<title>Solmar Heat — open-world crime game</title>
 <style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0c121a; font-family: Arial, Helvetica, sans-serif; color: #f2f2f2; }
-  #game-canvas { position: fixed; inset: 0; }
-  #game-canvas canvas { display: block; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #14101c; font-family: 'Segoe UI', Arial, sans-serif; color: #f2ede4; }
+  #game-container { position: fixed; inset: 0; }
+  #game-container canvas { display: block; }
   #hud { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 5; }
-  #topbar { position: absolute; top: 10px; left: 12px; right: 12px; display: flex; gap: 18px; align-items: center; text-shadow: 0 1px 3px #000; font-weight: bold; }
-  #money { font-size: 26px; color: #37e08b; }
-  #stars { font-size: 22px; letter-spacing: 2px; }
-  #health-wrap { width: 160px; height: 14px; background: rgba(0,0,0,0.55); border: 1px solid #888; border-radius: 7px; overflow: hidden; }
-  #health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #37e08b, #a8e05a); }
-  #health-num { font-size: 14px; }
-  #objective { position: absolute; top: 52px; left: 12px; max-width: 560px; background: rgba(0,0,0,0.55); padding: 8px 12px; border-radius: 8px; font-size: 15px; line-height: 1.35; }
-  #mission-dots { position: absolute; top: 52px; right: 12px; background: rgba(0,0,0,0.55); padding: 8px 12px; border-radius: 8px; font-size: 14px; }
-  #doubloons { position: absolute; top: 96px; right: 12px; background: rgba(0,0,0,0.55); padding: 6px 12px; border-radius: 8px; font-size: 14px; color: #ffd24a; }
-  #fare-streak { position: absolute; top: 132px; right: 12px; background: rgba(0,0,0,0.55); padding: 6px 12px; border-radius: 8px; font-size: 14px; color: #5ae0d4; }
-  #timer { position: absolute; top: 96px; left: 12px; font-size: 20px; font-weight: bold; color: #ffd24a; text-shadow: 0 1px 3px #000; }
-  #minimap { position: absolute; right: 12px; bottom: 12px; width: 170px; height: 170px; border: 2px solid rgba(255,255,255,0.5); border-radius: 8px; background: rgba(12,18,26,0.85); }
-  #toast { position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 10px 18px; border-radius: 8px; font-size: 16px; opacity: 0; transition: opacity 0.3s; white-space: nowrap; }
-  #controls-hint { position: absolute; left: 12px; bottom: 12px; font-size: 12px; color: #cfd8e3; text-shadow: 0 1px 2px #000; line-height: 1.5; }
-  .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: flex-start; flex-direction: column; z-index: 10; background: rgba(5,10,18,0.72); text-align: center; padding: 12px 20px; overflow-y: auto; }
-  .overlay h1 { font-size: 38px; margin: 0 0 4px; color: #ffd24a; text-shadow: 0 0 24px rgba(255,47,179,0.7), 0 2px 0 #000; letter-spacing: 2px; }
-  .overlay h2 { font-size: 16px; margin: 0 0 10px; color: #9fd8ff; font-weight: normal; }
-  .overlay p { max-width: 620px; line-height: 1.45; margin: 4px 0; color: #e8eef4; }
-  .overlay button { pointer-events: auto; font-size: 18px; padding: 10px 28px; margin-top: 10px; border: none; border-radius: 10px; background: #ff2fb3; color: #fff; cursor: pointer; font-weight: bold; box-shadow: 0 4px 18px rgba(255,47,179,0.5); }
-  .overlay button.secondary { background: #2f7fd9; box-shadow: none; font-size: 16px; padding: 10px 24px; }
-  #end-title { font-size: 44px; }
-  #down { background: rgba(120,0,0,0.45); }
-  #down-text { font-size: 40px; font-weight: bold; color: #ff5a5a; text-shadow: 0 2px 0 #000; }
-  #error-box { display: none; position: fixed; left: 10px; bottom: 10px; z-index: 50; background: #7a1010; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px; max-width: 80vw; }
-  table.controls { margin: 6px auto; border-collapse: collapse; font-size: 13px; }
-  table.controls td { padding: 3px 12px; text-align: left; }
-  table.controls td:first-child { font-weight: bold; color: #ffd24a; }
+  .panel { background: rgba(16, 12, 24, 0.72); border: 1px solid rgba(255, 210, 77, 0.35); border-radius: 10px; padding: 8px 12px; }
+  #top-left { position: absolute; top: 12px; left: 12px; min-width: 210px; }
+  #money { font-size: 26px; font-weight: 800; color: #ffd34d; }
+  #health-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  #health-bar { flex: 1; height: 10px; background: #2a2438; border-radius: 5px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #37d67a; }
+  #health-text { font-size: 13px; min-width: 26px; text-align: right; }
+  #wanted { font-size: 22px; letter-spacing: 3px; margin-top: 6px; color: #ffd34d; }
+  #objective { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); max-width: 46%; font-size: 15px; text-align: center; }
+  #mission-dots { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); font-size: 13px; color: #9fd8ff; letter-spacing: 1px; }
+  #minimap { position: absolute; right: 12px; top: 12px; width: 168px; height: 168px; border: 2px solid rgba(255, 210, 77, 0.5); border-radius: 10px; background: #10141c; }
+  #bottom-right { position: absolute; right: 12px; bottom: 12px; text-align: right; font-size: 13px; }
+  #bottom-right div { margin-top: 4px; }
+  #race-box { display: none; position: absolute; left: 50%; top: 108px; transform: translateX(-50%); text-align: center; font-size: 15px; }
+  #race-timer { font-size: 24px; font-weight: 800; color: #19e3ff; }
+  #toast { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); padding: 10px 18px; background: rgba(16, 12, 24, 0.85); border: 1px solid #ffd34d; border-radius: 8px; font-size: 15px; opacity: 0; transition: opacity 0.25s; white-space: nowrap; }
+  #toast.show { opacity: 1; }
+  #down { display: none; position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); text-align: center; }
+  #down-text { font-size: 52px; font-weight: 900; color: #ff4d4d; letter-spacing: 4px; text-shadow: 0 3px 18px rgba(0,0,0,0.8); }
+  #help { position: absolute; left: 12px; bottom: 12px; font-size: 12px; color: #cfc8bb; line-height: 1.6; }
+  #menu, #end { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(30, 18, 48, 0.55), rgba(10, 6, 16, 0.88)); z-index: 10; text-align: center; }
+  #end { display: none; }
+  h1.title { font-size: 64px; margin: 0; letter-spacing: 4px; color: #ffd34d; text-shadow: 0 0 24px rgba(255, 180, 40, 0.55); }
+  h1.title span { color: #ff2e88; }
+  .subtitle { font-size: 18px; color: #e8ddc8; margin: 10px 0 4px; }
+  .story { max-width: 560px; font-size: 15px; line-height: 1.6; color: #cfc8bb; }
+  .story b { color: #ffd34d; }
+  button.big { pointer-events: auto; margin-top: 22px; font-size: 20px; font-weight: 800; padding: 14px 42px; border: none; border-radius: 10px; background: linear-gradient(180deg, #ffd34d, #e8a51c); color: #241a05; cursor: pointer; letter-spacing: 1px; }
+  button.big:hover { filter: brightness(1.1); }
+  .controls { margin-top: 20px; font-size: 13px; color: #b9b2a4; line-height: 1.8; }
+  .controls b { color: #f2ede4; }
+  #end-title { font-size: 56px; font-weight: 900; letter-spacing: 4px; color: #ffd34d; margin: 0; }
+  #end-stats { max-width: 520px; font-size: 16px; line-height: 1.6; color: #e8ddc8; margin-top: 12px; }
+  #mute-btn { position: fixed; right: 12px; bottom: 12px; z-index: 6; background: rgba(16,12,24,0.72); color: #f2ede4; border: 1px solid rgba(255,210,77,0.35); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  #error { display: none; position: fixed; left: 12px; top: 50%; z-index: 20; background: #5a1414; color: #fff; padding: 10px 14px; border-radius: 8px; max-width: 420px; font-size: 13px; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="game-canvas"></div>
+<div id="game-container"></div>
+
 <div id="hud">
-  <div id="topbar">
-    <span id="money">$0</span>
-    <span id="stars">☆☆☆☆☆</span>
-    <div id="health-wrap"><div id="health-fill"></div></div>
-    <span id="health-num">100</span>
+  <div id="top-left" class="panel">
+    <div id="money">$0</div>
+    <div id="health-row"><span>♥</span><div id="health-bar"><div id="health-fill"></div></div><span id="health-text">100</span></div>
+    <div id="wanted">☆☆☆☆☆</div>
+    <div id="gun-indicator">👊 Fists (F)</div>
   </div>
-  <div id="objective"></div>
-  <div id="mission-dots"></div>
-  <div id="doubloons"></div>
-  <div id="fare-streak"></div>
-  <div id="timer"></div>
-  <canvas id="minimap" width="170" height="170"></canvas>
+  <div id="objective" class="panel">M1 Hot Wheels — steal the red sedan at the Marina Garage.</div>
+  <div id="mission-dots">M1  M2  M3  M4  M5  M6</div>
+  <canvas id="minimap" width="168" height="168"></canvas>
+  <div id="race-box" class="panel"><div id="race-timer">0.0s</div><div id="race-info">Checkpoint 1/4</div></div>
+  <div id="bottom-right" class="panel">
+    <div id="doubloon-count">◉ 0/12</div>
+    <div id="fare-streak">🚕 streak 0</div>
+  </div>
+  <div id="help">WASD drive / walk · E enter car · F punch / shoot · R race · Space handbrake · Shift sprint · M mute · Esc pause</div>
   <div id="toast"></div>
-  <div id="controls-hint">WASD drive / walk &nbsp;·&nbsp; Shift sprint &nbsp;·&nbsp; E enter / exit car &nbsp;·&nbsp; Space punch &nbsp;·&nbsp; F pistol (after M2) &nbsp;·&nbsp; Esc pause</div>
+  <div id="down"><div id="down-text">BUSTED</div></div>
 </div>
-<div id="menu" class="overlay" style="display:flex">
-  <h1>SOLMAR HEAT</h1>
-  <h2>Open-world crime in Solmar Bay — now with the Marlin's Last Hand (M5), Casino Solmar &amp; the Boardwalk</h2>
-  <p>Dana "Dash" Reyes owes the Marlin Club $400. Steal cars, outrun the police, run
-  couriers, drive taxi fares, hunt 12 hidden doubloons — and finish the job in the
-  finale at Casino Solmar. Five story missions, a living city, wanted stars, and a
-  Spray Shop that makes the heat disappear for $75.</p>
-  <table class="controls">
-    <tr><td>W A S D</td><td>Drive / walk (A left, D right)</td></tr>
-    <tr><td>E</td><td>Enter / exit car (steal it — wanted up!)</td></tr>
-    <tr><td>Shift</td><td>Sprint on foot</td></tr>
-    <tr><td>Space / click</td><td>Punch</td></tr>
-    <tr><td>F</td><td>Fire pistol (unlocked in Mission 2)</td></tr>
-    <tr><td>Esc</td><td>Pause</td></tr>
-  </table>
-  <button id="start-btn">START NEW GAME</button>
-  <button id="continue-btn" class="secondary">CONTINUE (LOAD SAVE)</button>
+
+<div id="menu">
+  <h1 class="title">SOLMAR <span>HEAT</span></h1>
+  <div class="subtitle">An open-world crime story in Solmar Bay — dusk, neon and the long arm of the law.</div>
+  <p class="story">Dana "Dash" Reyes owes the <b>Marlin Club $400</b>. Six jobs stand between her and freedom — hot-wiring a sedan, courier runs at sunset, losing a 3-star heat, stealing a gold GT, a casino limo, and finally <b>the Solmar Bank Job</b>: crack the vault in an armored van and outrun a 5-star chase to the Airport runway. Steal cars, dodge the police, run taxi fares, hunt 12 hidden doubloons and beat the street races.</p>
+  <button id="start-btn" class="big">▶ START GAME</button>
+  <div class="controls">
+    <b>W A S D</b> drive / walk &nbsp;·&nbsp; <b>E</b> enter or exit a car &nbsp;·&nbsp; <b>F</b> punch / fire pistol (after M2)<br>
+    <b>R</b> start a street race near a race marker &nbsp;·&nbsp; <b>Space</b> handbrake &nbsp;·&nbsp; <b>Shift</b> sprint &nbsp;·&nbsp; <b>Esc</b> pause
+  </div>
 </div>
-<div id="pause" class="overlay">
-  <h1>PAUSED</h1>
-  <p>Solmar Bay waits for no one — except right now.</p>
-  <button id="resume-btn">RESUME</button>
-  <button id="restart-btn" class="secondary">RESTART</button>
-</div>
-<div id="end" class="overlay">
+
+<div id="end">
   <h1 id="end-title">SOLMAR LEGEND</h1>
-  <p id="end-sub"></p>
-  <button id="end-btn">BACK TO MENU</button>
+  <p id="end-stats"></p>
+  <button id="restart-btn" class="big">↻ PLAY AGAIN</button>
 </div>
-<div id="down" class="overlay">
-  <div id="down-text">BUSTED!</div>
-  <p>Waking up at the Marina…</p>
-</div>
-<div id="error-box"></div>
+
+<button id="mute-btn">🔊 Sound</button>
+<div id="error"></div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
